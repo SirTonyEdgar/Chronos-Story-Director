@@ -1,0 +1,16 @@
+# Ignore Python virtual environment
+venv/
+__pycache__/
+*.pyc
+pyvenv.cfg
+
+# Ignore Environment Variables (API Keys)
+.env
+
+# Ignore the Local Database & User Data
+*.db
+*.sqlite3
+profiles/
+
+# Ignore VS Code settings
+.vscode/
