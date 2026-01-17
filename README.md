@@ -33,10 +33,10 @@ Run the interface from your terminal:
 ```streamlit run src/app.py```
 
 ## 📂 Project Structure
-- src/app.py: The Streamlit frontend interface.
-- src/backend.py: The core LangGraph engine and logic.
-- src/database_manager.py: CLI tool for bulk ingesting lore/PDFs.
-- profiles/: Stores your local story data (ignored by git).
+- ```src/app.py```: The Streamlit frontend interface.
+- ```src/backend.py```: The core LangGraph engine and logic.
+- ```src/database_manager.py```: CLI tool for bulk ingesting lore/PDFs.
+- ```profiles/```: Stores your local story data (ignored by git).
 
 ## 📄 License
 This project is licensed under the MIT License - see the source header for details.
