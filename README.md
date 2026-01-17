@@ -17,16 +17,16 @@
 ## 🛠️ Installation
 
 ### 1. Clone the Repository
-```git clone https://github.com/SirTonyEdgar/Chronos-Story-Director.git```
-```cd Chronos-Story-Director```
+- ```git clone https://github.com/SirTonyEdgar/Chronos-Story-Director.git```
+- ```cd Chronos-Story-Director```
 
 ### 2. Install Dependencies
 ```pip install -r requirements.txt```
 
 ### 3. Setup API Keys
 Create a file named .env in the root directory and add your API keys:
-```GOOGLE_API_KEY=your_gemini_key_here```
-```OPENAI_API_KEY=your_openai_key_here```  # Optional
+- ```GOOGLE_API_KEY=your_gemini_key_here```
+- ```OPENAI_API_KEY=your_openai_key_here```  # Optional
 
 ## 🚀 Usage
 Run the interface from your terminal:
