@@ -14,6 +14,9 @@
 - **🧠 Co-Author Chat:** RAG-aware chatbot that knows your entire story bible.
 - **🔧 Normie-Friendly UI:** Built with Streamlit for a clean, visual experience.
 
+<img width="1872" height="921" alt="Scene_Creator_Chronos_Story_Engine" src="https://github.com/user-attachments/assets/dd577e8b-cb7d-47d0-b201-5daf48747d01" />
+<img width="1872" height="923" alt="War_Room_Chronos_Story_Engine" src="https://github.com/user-attachments/assets/ef2517c2-fc0f-4b4d-ae08-0ed03003f5c0" />
+
 ## 🛠️ Installation
 
 ### 1. Clone the Repository
