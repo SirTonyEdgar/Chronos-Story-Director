@@ -9,3 +9,5 @@ pypdf
 pandas
 streamlit-agraph
 google-genai
+fpdf2
+EbookLib

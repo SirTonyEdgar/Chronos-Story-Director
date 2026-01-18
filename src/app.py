@@ -152,7 +152,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v11.2 - Safety Update (Backups & Context Fix)")
+    st.caption("v11.3 - Compile as PDF/EPUB")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -589,13 +589,55 @@ elif page == "📊 Status & Assets":
 # ==========================================
 elif page == "📚 Compiler":
     st.header("📚 Manuscript Compiler")
-    all_scenes = engine.get_all_files_list(profile)
-    selected = st.multiselect("Select Scenes to compile (Ordered):", all_scenes)
+    st.caption("Compile scenes into distribution-ready formats (PDF/EPUB).")
     
-    if selected and st.button("Compile Manuscript"):
-        text = engine.compile_manuscript(profile, selected)
-        st.download_button("Download as Markdown", text, "Book.md")
-        st.download_button("Download as Text", text, "Book.txt")
+    all_scenes = engine.get_all_files_list(profile)
+    
+    # Scene Selector
+    # Scene Selector
+    selected = st.multiselect(
+        "Select Scenes to compile (Ordered):", 
+        all_scenes, 
+        default=[]
+    )
+    
+    if selected:
+        st.divider()
+        st.subheader("📦 Export Options")
+        
+        c1, c2, c3 = st.columns(3)
+        
+        # Option 1: Raw Text
+        with c1:
+            if st.button("📝 Compile Plain Text"):
+                text = engine.compile_manuscript(profile, selected)
+                st.download_button("Download .txt", text, f"{profile}_Manuscript.txt")
+                st.download_button("Download .md", text, f"{profile}_Manuscript.md")
+
+        # Option 2: Formatted Binaries
+        with c2:
+            if st.button("📕 Generate Book (PDF/EPUB)"):
+                with st.spinner("Typesetting document layout..."):
+                    formats = engine.compile_formatted_manuscript(profile, selected)
+                    
+                    if formats["pdf"]:
+                        st.download_button(
+                            label="Download PDF (Print)",
+                            data=formats["pdf"],
+                            file_name=f"{profile}_Manuscript.pdf",
+                            mime="application/pdf"
+                        )
+                    
+                    if formats["epub"]:
+                        st.download_button(
+                            label="Download EPUB (E-Reader)",
+                            data=formats["epub"],
+                            file_name=f"{profile}_Manuscript.epub",
+                            mime="application/epub+zip"
+                        )
+                    
+                    if not formats["pdf"] and not formats["epub"]:
+                        st.error("Formatting failed. Please check server logs for encoding errors.")
 
 # ==========================================
 # MODULE: KNOWLEDGE BASE
