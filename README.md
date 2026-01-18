@@ -17,8 +17,13 @@
 - **🕵️ Fog of War:** Redact private scenes so the "Public Reaction" AI doesn't know your secrets.
 - **🎭 Identity Manager:** Handle aliases, secret identities, and changing narrative personas.
 
-<img width="1872" height="921" alt="Scene_Creator_Chronos_Story_Engine" src="https://github.com/user-attachments/assets/dd577e8b-cb7d-47d0-b201-5daf48747d01" />
-<img width="1872" height="923" alt="War_Room_Chronos_Story_Engine" src="https://github.com/user-attachments/assets/ef2517c2-fc0f-4b4d-ae08-0ed03003f5c0" />
+<img width="1440" height="639" alt="image" src="https://github.com/user-attachments/assets/0f6f2f2b-c830-4db1-803c-623d9fff5a89" />
+<img width="1429" height="876" alt="image" src="https://github.com/user-attachments/assets/558919bf-f7d9-4334-ab6a-63371f304dcb" />
+<img width="1444" height="456" alt="image" src="https://github.com/user-attachments/assets/fc7e0151-1a0f-43d2-be98-c30b66a59d38" />
+<img width="1452" height="494" alt="image" src="https://github.com/user-attachments/assets/01f85c8f-5cf9-417d-8b2f-2aff4d14d551" />
+<img width="1436" height="845" alt="image" src="https://github.com/user-attachments/assets/999f8932-04ac-4c24-afba-ffe62ceece8a" />
+<img width="1446" height="761" alt="image" src="https://github.com/user-attachments/assets/379a30b2-369d-46f8-9139-f0bb8031115b" />
+<img width="1437" height="865" alt="image" src="https://github.com/user-attachments/assets/33f5f3a0-00e4-4368-9ad8-12cfa9dde0b5" />
 
 ## 🛠️ Installation
 
