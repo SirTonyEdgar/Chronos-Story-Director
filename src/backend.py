@@ -397,7 +397,7 @@ def complete_project(profile_name, project_index, custom_lore_text):
 def analyze_state_changes(profile_name, scene_content):
     """
     Executes an LLM analysis of the scene to auto-update the world state (JSON).
-    Detects changes in allies, assets, skills, and reputation.
+    Detects changes in allies, assets, skills, reputation, AND abstract World Variables.
     """
     state = get_world_state(profile_name)
     
@@ -416,11 +416,16 @@ def analyze_state_changes(profile_name, scene_content):
     1. ALLIES: Update Loyalty (0-100) or Status if changed. Add new major characters.
     2. ASSETS: Add new resources/locations gained. Mark lost assets as "Destroyed".
     3. SKILLS: Add new skills learned.
-    4. ALIASES & REPUTATION (CRITICAL): 
+    4. ALIASES & REPUTATION:
        - Look for new titles, nicknames, or reputations bestowed upon the protagonist by the public or other characters.
        - Example: If they conquer a city, add "Conqueror of [City]".
        - Example: If they fix the economy, add "The Architect".
        - MERGE these into the existing 'Aliases' string in 'Protagonist Status' (comma-separated).
+    5. WORLD VARIABLES (CRITICAL):
+       - Review the 'World Variables' list in the State.
+       - Based on the scene's events, strictly Apply the "Mechanic/Rule" defined for each variable.
+       - Example: If 'Federal Heat' rule says "violence increases this", and scene has violence, increase the Value.
+       - Output the UPDATED list of variables.
     
     OUTPUT: Return ONLY the updated JSON.
     """
@@ -469,6 +474,14 @@ def draft_scene(state: StoryState):
                 t_desc = t.get("Description", "No description")
                 timeline_section += f"- {t_name}: {t_desc}\n"
     
+    # World Variables Logic
+    variables_section = ""
+    world_vars = state_tracking.get("World Variables", [])
+    if world_vars:
+        variables_section = "*** WORLD MECHANICS & VARIABLES (STRICT ADHERENCE) ***\n"
+        for v in world_vars:
+            variables_section += f"- {v.get('Name', 'Var')}: {v.get('Value', '0')} (RULE: {v.get('Mechanic', '')})\n"
+
     # Conditional Privacy Logic
     privacy_protocol = ""
     if state.get('use_fog_of_war', False):
@@ -492,6 +505,7 @@ def draft_scene(state: StoryState):
     *** WORLD LAWS & MECHANICS (STRICT) ***
     {rules}
     {privacy_protocol}
+    {variables_section}
     
     *** STORY BIBLE (LORE) ***
     {lore}

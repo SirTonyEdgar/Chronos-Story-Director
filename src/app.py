@@ -152,7 +152,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v11.7 - Logic Engine Update")
+    st.caption("v12.0 - World Variables Update")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -475,8 +475,8 @@ elif page == "📊 Status & Assets":
     st.divider()
     st.subheader("🏰 Empire Dashboard")
     
-    tab_main, tab_allies, tab_assets, tab_skills, tab_raw = st.tabs(
-        ["👤 Protagonist", "🤝 Relations", "💰 Assets", "⚡ Skills", "📝 JSON"]
+    tab_main, tab_allies, tab_assets, tab_skills, tab_vars, tab_raw = st.tabs(
+        ["👤 Protagonist", "🤝 Relations", "💰 Assets", "⚡ Skills", "🌐 Variables", "📝 JSON"]
     )
     
     # --- TAB: PROTAGONIST IDENTITY ---
@@ -610,6 +610,38 @@ elif page == "📊 Status & Assets":
         )
         
         current_state["Skills"] = edited_skills
+
+    # --- TAB: WORLD VARIABLES ---
+    with tab_vars:
+        st.info("🌐 **Abstract Simulation Layers:** Track abstract forces like 'Heat', 'Corruption', or 'Timeline Stability'. The AI will adjust the story based on these Rules.")
+        
+        current_vars = current_state.get("World Variables", [])
+        
+        # Migration (Handle generic lists)
+        normalized_vars = []
+        if current_vars:
+            for v in current_vars:
+                if isinstance(v, dict): normalized_vars.append(v)
+        
+        # Default Examples (If empty, helps user understand)
+        if not normalized_vars:
+            normalized_vars = [
+                {"Name": "Timeline Drift", "Value": "0%", "Mechanic": "As this increases, future predictions become vague/inaccurate."},
+                {"Name": "Federal Heat", "Value": "Low", "Mechanic": "If High, federal agents will investigate/intervene."},
+            ]
+
+        edited_vars = st.data_editor(
+            normalized_vars,
+            num_rows="dynamic",
+            width="stretch",
+            column_config={
+                "Name": st.column_config.TextColumn("Variable Name", required=True),
+                "Value": st.column_config.TextColumn("Current State", width="small"),
+                "Mechanic": st.column_config.TextColumn("Logic / Consequence Rule", width="large", help="Tell the AI how this variable affects the story.")
+            },
+            key="editor_vars"
+        )
+        current_state["World Variables"] = edited_vars
 
     # --- TAB: RAW JSON ---
     with tab_raw:

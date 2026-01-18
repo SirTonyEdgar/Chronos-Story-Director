@@ -2,19 +2,20 @@
 
 **Chronos Story Director** is a sophisticated RAG-based storytelling engine designed to orchestrate LLMs (Gemini, GPT-4) for long-form narrative generation. It tracks world state, manages complex lore, and provides a "War Room" for strategic simulations.
 
-![Version](https://img.shields.io/badge/version-11.7-blue)
+![Version](https://img.shields.io/badge/version-12-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## ✨ Features
 
-- **🎬 Scene Creator:** Auto-generate prose with consistent history tracking.
-- **🌌 Multiverse Support:** Manage multiple timelines and parallel realities.
-- **⚔️ War Room:** Monte Carlo-style strategy simulator for plot decisions.
-- **🕸️ Interactive Network Map:** Dedicated full-screen visualization of character relationships.
-- **📊 World State Tracker:** JSON-based tracking of Assets, Allies, and Skills.
-- **🧠 Co-Author Chat:** RAG-aware chatbot that knows your entire story bible.
-- **🔧 Normie-Friendly UI:** Built with Streamlit for a clean, visual experience.
-- **🕵️ Fog of War:** Redact private scenes so the "Public Reaction" AI doesn't know your secrets.
+- **🎬 Context-Aware Scene Creator:** Auto-generate prose that respects your lore, rules, and previous chapters.
+- **🌌 World Simulation Engine:** Track abstract forces (e.g., "Federal Heat," "Timeline Drift") with rule-based consequences.
+- **⚔️ War Room:** Run Monte Carlo-style strategic simulations to predict the risks of your plot decisions.
+- **📚 Manuscript Publisher:** Compile your scenes into print-ready PDF or EPUB books with one click.
+- **🕸️ Interactive Network Map:** A live, physics-based graph visualization of character relationships.
+- **📊 Dynamic State Tracker:** JSON-based persistence for Assets, Allies, Skills, and Projects.
+- **🧠 RAG Co-Author:** A chat assistant that knows your entire story bible, lore, and secret plans.
+- **🕵️ Fog of War:** "Redacted" text handling allows you to simulate Public Reactions to your secret moves.
+- **🌌 Multiverse Support:** Manage branching timelines and parallel realities without database corruption.
 - **🎭 Identity Manager:** Handle aliases, secret identities, and changing narrative personas.
 
 <img width="1440" height="639" alt="image" src="https://github.com/user-attachments/assets/0f6f2f2b-c830-4db1-803c-623d9fff5a89" />
