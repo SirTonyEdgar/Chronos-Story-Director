@@ -1,28 +1,12 @@
 """
-Chronos Story Director
-======================
-A sophisticated RAG-based storytelling engine that orchestrates LLMs, 
-tracks world state, and manages creative workflows.
+Chronos Story Director - Backend Engine
+=======================================
+Core logic for the Retrieval-Augmented Generation (RAG) storytelling system.
+Handles LLM orchestration, state management, database persistence, and 
+narrative workflow execution.
 
 Copyright (c) 2025 SirTonyEdgar
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Licensed under the MIT License.
 """
 
 import os
@@ -33,7 +17,7 @@ import sqlite3
 from typing import TypedDict, Optional, List, Dict, Any
 from dotenv import load_dotenv
 
-# Third-Party Imports
+# Third-Party Dependencies
 import google.generativeai as genai 
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -61,8 +45,8 @@ if GOOGLE_API_KEY:
 # --- TYPE DEFINITIONS ---
 class StoryState(TypedDict):
     """
-    Represents the state of a scene generation workflow.
-    Passed between LangGraph nodes.
+    State schema for the scene generation workflow.
+    Tracks context, configuration, and generation artifacts across graph nodes.
     """
     profile_name: str 
     year: int
@@ -76,21 +60,42 @@ class StoryState(TypedDict):
     is_grounded: bool
     recent_context: str 
     banned_words: str
+    use_fog_of_war: bool
 
-# --- LLM FACTORY & UTILITIES ---
+# --- HELPER FUNCTIONS ---
+
+def _extract_json(text: str) -> Dict:
+    """
+    Robustly extracts JSON objects from LLM responses, handling potential 
+    markdown formatting or conversational preamble.
+    """
+    try:
+        # Attempt direct parse
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Regex fallback to find the first JSON-like structure
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+    return {}
 
 class MockResponse:
-    """Mock object to simulate an LLM response object during failure states."""
+    """Simulation of an LLM response object for fallback scenarios."""
     def __init__(self, text):
         self.content = text
 
 class MockLLM:
-    """Fallback client that returns error messages instead of raising exceptions."""
+    """Fallback client that returns system error messages instead of raising exceptions."""
     def invoke(self, *args, **kwargs):
-        return MockResponse("⚠️ SYSTEM ERROR: API Key missing. Check .env or Settings.")
+        return MockResponse("⚠️ SYSTEM ERROR: API Key missing or invalid configuration.")
+
+# --- INITIALIZATION & CONFIGURATION ---
 
 def get_story_settings(profile_name: str) -> dict:
-    """Fetches global story settings from DB, falling back to defaults."""
+    """Retrieves global configuration settings from the database."""
     defaults = {
         "protagonist": "The Protagonist",
         "default_timezone": "CST",
@@ -116,13 +121,13 @@ def get_story_settings(profile_name: str) -> dict:
 
 def get_llm(profile_name: str, task_type: str = "scene", settings: Optional[dict] = None):
     """
-    Factory function that initializes the appropriate LLM client (Google/OpenAI)
-    based on profile settings. Includes logic for cross-provider fallbacks.
+    Factory method for initializing LLM clients.
+    Implements routing logic based on user settings and available API keys.
     """
     if settings is None:
         settings = get_story_settings(profile_name)
     
-    # Map task to model setting
+    # Map task type to setting key
     model_map = {
         "scene": "model_scene",
         "chat": "model_chat",
@@ -131,19 +136,19 @@ def get_llm(profile_name: str, task_type: str = "scene", settings: Optional[dict
     target_key = model_map.get(task_type, "model_chat")
     model_name = settings.get(target_key, "gemini-2.5-flash")
     
-    # Provider Routing Logic
+    # Provider detection
     is_gemini = "gemini" in model_name.lower()
     is_gpt = "gpt" in model_name.lower() or "o1" in model_name.lower()
 
-    # 1. Primary Preference: Google
+    # 1. Google Provider
     if is_gemini and GOOGLE_API_KEY:
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=GOOGLE_API_KEY)
     
-    # 2. Primary Preference: OpenAI
+    # 2. OpenAI Provider
     if is_gpt and OPENAI_API_KEY and ChatOpenAI:
         return ChatOpenAI(model=model_name, api_key=OPENAI_API_KEY)
 
-    # 3. Fallbacks (Cross-Provider)
+    # 3. Cross-Provider Fallbacks
     if is_gemini and not GOOGLE_API_KEY and OPENAI_API_KEY:
         return ChatOpenAI(model="gpt-3.5-turbo", api_key=OPENAI_API_KEY)
     
@@ -157,7 +162,7 @@ def get_llm(profile_name: str, task_type: str = "scene", settings: Optional[dict
     return MockLLM()
 
 def list_available_models_all() -> List[str]:
-    """Scans API keys to determine which models are available for selection."""
+    """Retrieves a list of available models from configured providers."""
     models = []
     
     if GOOGLE_API_KEY:
@@ -165,9 +170,9 @@ def list_available_models_all() -> List[str]:
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
                     models.append(m.name.replace("models/", ""))
-        except: 
+        except Exception: 
             pass
-        # Hardcoded specific versions in case list_models() is slow/incomplete
+        # Ensure standard models are available even if API listing fails
         models.extend(["gemini-2.5-pro", "gemini-2.5-flash", "gemini-1.5-pro", "gemini-1.5-flash"])
     
     if OPENAI_API_KEY:
@@ -175,10 +180,10 @@ def list_available_models_all() -> List[str]:
         
     return sorted(list(set(models)))
 
-# --- PROFILE & PATH MANAGEMENT ---
+# --- FILE SYSTEM & PROFILE MANAGEMENT ---
 
 def get_paths(profile_name: str) -> Dict[str, str]:
-    """Generates the file system paths for a specific profile."""
+    """Constructs absolute file paths for profile resources."""
     root = os.path.join(PROFILES_DIR, profile_name)
     return {
         "root": root,
@@ -190,7 +195,7 @@ def get_paths(profile_name: str) -> Dict[str, str]:
     }
 
 def ensure_profile_structure(profile_name: str):
-    """Creates the necessary directory structure and DB for a new profile."""
+    """Initializes the directory structure and database for a new profile."""
     paths = get_paths(profile_name)
     for p in [paths['root'], paths['data'], paths['output'], paths['lore']]:
         os.makedirs(p, exist_ok=True)
@@ -204,13 +209,14 @@ def ensure_profile_structure(profile_name: str):
     return paths
 
 def list_profiles() -> List[str]:
+    """Enumerates available user profiles."""
     if not os.path.exists(PROFILES_DIR): return []
     return [d for d in os.listdir(PROFILES_DIR) if os.path.isdir(os.path.join(PROFILES_DIR, d))]
 
-# --- DATABASE OPERATIONS ---
+# --- DATABASE PERSISTENCE ---
 
 def init_db(profile_name: str):
-    """Initializes SQLite tables for Fragments, Settings, and Chat History."""
+    """Initializes SQLite schema for persistent storage."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30) 
     c = conn.cursor()
@@ -221,12 +227,12 @@ def init_db(profile_name: str):
         source_filename TEXT, content TEXT, type TEXT, year INTEGER DEFAULT NULL
     )''')
     
-    # Key-Value Settings
+    # Configuration Storage
     c.execute('''CREATE TABLE IF NOT EXISTS story_settings (
         key TEXT PRIMARY KEY, value TEXT
     )''')
     
-    # Co-Author Chat Log
+    # Interaction Logs
     c.execute('''CREATE TABLE IF NOT EXISTS chat_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         role TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -235,6 +241,7 @@ def init_db(profile_name: str):
     conn.close()
 
 def update_story_setting(profile_name: str, key: str, value: str):
+    """Upserts a global configuration setting."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
@@ -242,10 +249,10 @@ def update_story_setting(profile_name: str, key: str, value: str):
     conn.commit()
     conn.close()
 
-# --- RAG & CONTEXT MANAGEMENT ---
+# --- RAG & CONTEXT AGGREGATION ---
 
 def get_full_context_data(profile_name: str):
-    """Aggregates all world-building data (Lore, Rules, Plans) for the prompt context."""
+    """Retrieves all relevant context layers (Lore, Rules, Plans) for the prompt."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30)
     c = conn.cursor()
@@ -270,13 +277,14 @@ def get_full_context_data(profile_name: str):
     return lore, rules, plan, facts, spoilers
 
 def get_initial_lore(profile_name: str) -> str:
-    """Retrieves the first lore entry as a fallback context for the very first scene."""
+    """Fallback context provider for the initial session."""
     frags = get_fragments(profile_name, "Lore")
     if frags:
         return f"=== BACKGROUND LORE ===\n{frags[0][2]}"
     return "NO LORE ESTABLISHED. STARTING FRESH."
 
 def get_fragments(profile_name: str, doc_type: Optional[str] = None):
+    """Queries memory fragments with optional type filtering."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
@@ -289,6 +297,7 @@ def get_fragments(profile_name: str, doc_type: Optional[str] = None):
     return rows
 
 def add_fragment(profile_name, filename, content, doc_type):
+    """Persists a new document fragment to the database."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30)
     c = conn.cursor()
@@ -297,6 +306,7 @@ def add_fragment(profile_name, filename, content, doc_type):
     conn.close()
 
 def update_fragment(profile_name, frag_id, new_content):
+    """Updates the content of an existing fragment."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
@@ -305,6 +315,7 @@ def update_fragment(profile_name, frag_id, new_content):
     conn.close()
 
 def delete_fragment(profile_name, frag_id):
+    """Removes a fragment from the database."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
@@ -312,9 +323,10 @@ def delete_fragment(profile_name, frag_id):
     conn.commit()
     conn.close()
 
-# --- STATE & PROJECT TRACKER ---
+# --- WORLD STATE MANAGEMENT ---
 
 def get_world_state(profile_name: str) -> Dict:
+    """Reads the current world state JSON."""
     paths = get_paths(profile_name)
     try:
         with open(paths['state'], 'r') as f: 
@@ -323,6 +335,7 @@ def get_world_state(profile_name: str) -> Dict:
         return {}
 
 def save_world_state(profile_name: str, new_state_dict: Dict):
+    """Writes updates to the world state JSON."""
     paths = get_paths(profile_name)
     try:
         with open(paths['state'], 'w') as f: 
@@ -332,6 +345,7 @@ def save_world_state(profile_name: str, new_state_dict: Dict):
         return False, str(e)
 
 def add_project(profile_name, name, description, features):
+    """Initialize a new tracked project in the world state."""
     state = get_world_state(profile_name)
     if "Projects" not in state: state["Projects"] = []
     new_proj = {"Name": name, "Description": description, "Features_Specs": features, "Progress": 0}
@@ -339,6 +353,7 @@ def add_project(profile_name, name, description, features):
     save_world_state(profile_name, state)
 
 def update_project(profile_name, project_index, progress, notes):
+    """Updates progress or specifications for an existing project."""
     state = get_world_state(profile_name)
     if "Projects" in state and 0 <= project_index < len(state["Projects"]):
         state["Projects"][project_index]["Progress"] = progress
@@ -346,6 +361,7 @@ def update_project(profile_name, project_index, progress, notes):
         save_world_state(profile_name, state)
 
 def complete_project(profile_name, project_index, custom_lore_text):
+    """Archives a completed project and converts it into a permanent historical Fact."""
     state = get_world_state(profile_name)
     if "Projects" in state and 0 <= project_index < len(state["Projects"]):
         proj = state["Projects"][project_index]
@@ -357,33 +373,63 @@ def complete_project(profile_name, project_index, custom_lore_text):
     return False, "Project not found."
 
 def analyze_state_changes(profile_name, scene_content):
-    """Uses LLM to detect state changes in the narrative and proposes JSON updates."""
+    """
+    Executes an LLM analysis of the scene to auto-update the world state (JSON).
+    Detects changes in allies, assets, skills, and reputation.
+    """
     state = get_world_state(profile_name)
-    prompt = f"UPDATE JSON STATE based on SCENE. STATE: {json.dumps(state)}. SCENE: {scene_content}. Return JSON only."
+    
+    prompt = f"""
+    ROLE: World State Database Manager.
+    
+    TASK: Analyze the narrative SCENE and update the JSON STATE to reflect changes.
+    
+    *** CURRENT STATE ***
+    {json.dumps(state)}
+    
+    *** NARRATIVE SCENE ***
+    {scene_content}
+    
+    *** UPDATE INSTRUCTIONS ***
+    1. ALLIES: Update Loyalty (0-100) or Status if changed. Add new major characters.
+    2. ASSETS: Add new resources/locations gained. Mark lost assets as "Destroyed".
+    3. SKILLS: Add new skills learned.
+    4. ALIASES & REPUTATION (CRITICAL): 
+       - Look for new titles, nicknames, or reputations bestowed upon the protagonist by the public or other characters.
+       - Example: If they conquer a city, add "Conqueror of [City]".
+       - Example: If they fix the economy, add "The Architect".
+       - MERGE these into the existing 'Aliases' string in 'Protagonist Status' (comma-separated).
+    
+    OUTPUT: Return ONLY the updated JSON.
+    """
+    
     llm = get_llm(profile_name, "chat") 
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content
-        clean = res.replace("```json", "").replace("```", "")
-        return json.loads(clean)
-    except: 
+        # Use robust extractor instead of simple replace
+        return _extract_json(res)
+    except Exception as e: 
+        print(f"Analysis Error: {e}")
         return state
 
-# --- SCENE GENERATION (LANGGRAPH WORKFLOW) ---
+# --- SCENE GENERATION WORKFLOW ---
 
 def draft_scene(state: StoryState):
     """
-    Node 1: Drafts the scene content based on context, rules, and world state.
+    Workflow Node 1: Narrative Drafting.
+    Generates the initial scene prose based on aggregated context, laws, and user brief.
+    Includes Conditional Privacy (Fog of War) logic if enabled.
     """
     profile = state['profile_name']
     lore, rules, plan, facts, db_spoilers = get_full_context_data(profile)
     settings = get_story_settings(profile)
     state_tracking = get_world_state(profile)
     
-    # Logic for Dynamic Spoilers & Banned Words
+    # Dynamic context injection (Spoilers & Banned Words)
     dynamic_spoilers = extract_dynamic_spoilers(plan, state['year'], profile, settings=settings) 
     all_banned = list(set(db_spoilers + dynamic_spoilers))
     
-    # Formatting Header
+    # Header generation (Date/Time)
     use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
     header = ""
     if use_time_system:
@@ -401,17 +447,31 @@ def draft_scene(state: StoryState):
                 t_name = t.get("Name", "Unknown")
                 t_desc = t.get("Description", "No description")
                 timeline_section += f"- {t_name}: {t_desc}\n"
-        else:
-            t_a = settings.get('timeline_a_name', 'Timeline Alpha')
-            t_b = settings.get('timeline_b_name', 'Timeline Prime')
-            timeline_section = f"TIMELINES: 1. {t_a} (Past/Alt). 2. {t_b} (Present/Main)."
     
+    # Conditional Privacy Logic
+    privacy_protocol = ""
+    if state.get('use_fog_of_war', False):
+        privacy_protocol = """
+        *** PRIVACY & FOG OF WAR PROTOCOL (CRITICAL) ***
+        You are responsible for marking "Secret Information" for the simulation engine.
+        
+        RULE: Whenever the characters are in a location or context where the GENERAL PUBLIC / MEDIA cannot see or hear them (e.g., inside a private home, a moving car, a secure bunker, a whispered conversation, or internal monologue), you MUST wrap that specific section of text in [[PRIVATE]] ... [[/PRIVATE]] tags.
+        
+        EXAMPLE:
+        The two men walked through the park. "Nice day," JFK said.
+        [[PRIVATE]]
+        Inside the car, the smile dropped. "We have a problem," he whispered.
+        [[/PRIVATE]]
+        """
+
     prompt = f"""
     ROLE: Novelist (Third Person Limited).
     CHARACTER: {settings['protagonist']}.
     
     *** WORLD LAWS & MECHANICS (STRICT) ***
     {rules}
+    
+    {privacy_protocol}
     
     *** WORLD STATE & PROJECTS ***
     {json.dumps(state_tracking)}
@@ -449,7 +509,8 @@ def draft_scene(state: StoryState):
 
 def critique_scene(state: StoryState):
     """
-    Node 2: checks constraints (Banned Words) and adherence to logic.
+    Workflow Node 2: Validation.
+    Checks adherence to constraints (e.g. banned words) and logic integrity.
     """
     prompt = f"ROLE: Editor. CHECK: Banned [{state['banned_words']}]? DRAFT: {state['current_draft']} OUTPUT: PASS/FAIL"
     llm = get_llm(state['profile_name'], "chat")
@@ -457,22 +518,20 @@ def critique_scene(state: StoryState):
         return {"is_grounded": True, "critique_notes": ""}
     return {"is_grounded": False, "critique_notes": "Found banned content or logic break."}
 
-def generate_scene(profile_name, year, date_str, time_str, title, brief, context_files_list=None):
+def generate_scene(profile_name, year, date_str, time_str, title, brief, context_files_list=None, use_fog_of_war=False):
     """
-    Orchestrates the drafting process. Builds the prompt context from files,
-    initializes the LangGraph workflow, and handles file saving logic.
+    Entry point for the scene generation pipeline.
+    Initializes the state graph, aggregates context, and executes the workflow.
     """
-    # Build Graph
     workflow = StateGraph(StoryState)
     workflow.add_node("drafter", draft_scene)
     workflow.add_node("validator", critique_scene)
     workflow.set_entry_point("drafter")
     workflow.add_edge("drafter", "validator")
-    # Loop back if validation fails, up to 3 tries
     workflow.add_conditional_edges("validator", lambda s: END if s['is_grounded'] or s['revision_count'] > 2 else "drafter")
     app = workflow.compile()
     
-    # Gather Context
+    # Context Assembly
     context_str = ""
     if context_files_list:
         for fname in context_files_list:
@@ -485,7 +544,7 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
 
     settings = get_story_settings(profile_name)
     
-    # Time/Date Inference Logic
+    # Heuristic Date/Time Inference
     use_time = settings.get('use_time_system', 'true').lower() == 'true'
     final_year = year
     final_date = date_str
@@ -500,7 +559,7 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
     try: final_year = int(final_year)
     except: final_year = 0
 
-    # Initial State
+    # Initial Workflow State
     initial_input = {
         "profile_name": profile_name,
         "year": final_year,
@@ -513,12 +572,13 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
         "critique_notes": "",
         "is_grounded": False,
         "current_draft": "",
-        "banned_words": ""
+        "banned_words": "",
+        "use_fog_of_war": use_fog_of_war
     }
     
     final_state = app.invoke(initial_input)
     
-    # Save to Disk
+    # Output Persistence
     safe_title = re.sub(r'[\\/*?:"<>|]', "", title).replace(" ", "_")
     safe_date = final_date.replace(" ", "-")
     filename = f"{final_year}-{safe_date}_{safe_title}.txt"
@@ -540,14 +600,14 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
 # --- AUXILIARY AI TOOLS ---
 
 def extract_dynamic_spoilers(plan, year, profile_name, settings=None):
-    """Parses future events from the 'Plan' to prevent AI from revealing them too early."""
+    """Parses future events from the 'Plan' to prevent context leakage."""
     if not plan or plan == "NO PLAN.": return []
     prompt = f"List FUTURE events after {year} from: {plan}. OUTPUT: Comma-separated."
     llm = get_llm(profile_name, "chat", settings=settings) 
     return [x.strip() for x in llm.invoke([HumanMessage(content=prompt)]).content.split(',')]
 
 def infer_header_data(brief, prev_context, settings, profile_name):
-    """Uses LLM to deduce the Scene's Date/Time if the user left it blank."""
+    """Estimates the narrative date/time for the scene based on recent context."""
     prompt = f"""
     TASK: Calculate Date/Time/Year.
     BRIEF: {brief}
@@ -558,13 +618,12 @@ def infer_header_data(brief, prev_context, settings, profile_name):
     llm = get_llm(profile_name, "chat", settings=settings) 
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content
-        clean = res.replace("```json", "").replace("```", "")
-        return json.loads(clean)
+        return _extract_json(res)
     except: 
         return {}
 
 def run_chat_query(profile_name, user_input):
-    """General purpose Co-Author chat that is aware of the entire RAG context."""
+    """Interacts with the Co-Author persona, aware of full narrative context."""
     lore, rules, plan, facts, spoilers = get_full_context_data(profile_name)
     state = get_world_state(profile_name)
     
@@ -578,23 +637,74 @@ def run_chat_query(profile_name, user_input):
     llm = get_llm(profile_name, "chat")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
-def generate_reaction_for_scene(profile_name, filename, faction):
-    """Simulates a specific faction's reaction to a written scene."""
+def generate_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard"):
+    """
+    Simulates a faction's reaction to a scene.
+    Supports 'Fog of War' (redacting private content) and custom formatting styles.
+    """
     content = read_file_content(profile_name, filename)
-    prompt = f"ROLE: Sim. FACTION: {faction}. SCENE: {content}. React if alive."
+    
+    # 1. Content Sanitization (Privacy Filter)
+    if public_only:
+        # Redact multi-line private blocks
+        pattern = r"\[\[PRIVATE\]\].*?\[\[/PRIVATE\]\]"
+        content = re.sub(pattern, "[...INTERNAL/PRIVATE SCENE REDACTED...]", content, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Redact inline private tags
+        content = re.sub(r"\[PRIVATE:.*?\]", "[REDACTED]", content)
+
+    # 2. Context Instruction Layer
+    knowledge_instr = "You have full knowledge of the scene, including internal thoughts."
+    if public_only:
+        knowledge_instr = (
+            "CRITICAL: You are an EXTERNAL OBSERVER. "
+            "The scene text has had private interactions REDACTED. "
+            "You DO NOT know what happened in the redacted sections. "
+            "You ONLY know what was physically visible in public. "
+            "Do NOT guess the redacted content accurately. Speculate wildly or ignore it."
+        )
+
+    # 3. Prompt Construction
+    prompt = f"""
+    ROLE: Narrative Simulator.
+    TARGET FACTION: {faction}
+    
+    *** MISSION ***
+    Write a reaction to the SCENE provided below from the perspective of the Target Faction.
+    
+    *** FORMATTING & TONE ***
+    The output must strictly follow this format/medium: 
+    "{format_style}"
+    
+    (Adopt the slang, structure, and limitations of this medium).
+    
+    *** KNOWLEDGE CONSTRAINTS ***
+    {knowledge_instr}
+    
+    *** SCENE CONTEXT ***
+    {content}
+    """
     
     llm = get_llm(profile_name, "reaction")
     res = llm.invoke([HumanMessage(content=prompt)]).content
+    
     if "REFUSAL" in res: return False, res
+    
+    # 4. Result Persistence
     paths = get_paths(profile_name)
+    timestamp = " (Public)" if public_only else " (Omniscient)"
+    clean_style = format_style.split("->")[-1].strip()
+    header = f"\n\n>>> REACTION: {faction} | {clean_style}{timestamp} <<<\n"
+    
     with open(os.path.join(paths['output'], filename), "a", encoding="utf-8") as f:
-        f.write(f"\n\n>>> REACTION: {faction} <<<\n{res}\n")
+        f.write(header + res + "\n")
+        
     return True, res
 
 def run_war_room_simulation(profile_name, action_input):
     """
-    Performs a Monte Carlo-style simulation of a proposed action using 
-    the current world state, assets, and rules. Returns a risk report.
+    Executes a Monte Carlo strategic simulation for a proposed action.
+    Returns a structured risk/reward analysis report.
     """
     lore, rules, plan, facts, spoilers = get_full_context_data(profile_name)
     state = get_world_state(profile_name)
@@ -651,10 +761,10 @@ def run_war_room_simulation(profile_name, action_input):
     llm = get_llm(profile_name, "reaction")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
-# --- FILE HELPERS ---
+# --- UTILITIES & FILE I/O ---
 
 def get_all_files_list(profile_name: str) -> List[str]:
-    """Returns all generated scenes and lore files sorted by modification time."""
+    """Returns a sorted list of all scene and lore files."""
     paths = get_paths(profile_name)
     scenes = glob.glob(os.path.join(paths['output'], "*.txt"))
     lore = glob.glob(os.path.join(paths['lore'], "*.txt"))
@@ -665,6 +775,7 @@ def get_all_files_list(profile_name: str) -> List[str]:
     return [x[0] for x in all_files]
 
 def read_file_content(profile_name, filename):
+    """Safely reads the content of a file from either Output or Lore directories."""
     paths = get_paths(profile_name)
     p1 = os.path.join(paths['output'], filename)
     if os.path.exists(p1): return open(p1, "r", encoding="utf-8").read()
@@ -673,6 +784,7 @@ def read_file_content(profile_name, filename):
     return "Error: File not found."
 
 def save_edited_scene(profile_name, filename, content):
+    """Overwrites a scene file with edited content."""
     paths = get_paths(profile_name)
     try:
         with open(os.path.join(paths['output'], filename), "w", encoding="utf-8") as f: 
@@ -682,6 +794,7 @@ def save_edited_scene(profile_name, filename, content):
         return False, str(e)
 
 def delete_specific_scene(profile_name, filename):
+    """Permanently deletes a scene file (Lore files are protected)."""
     paths = get_paths(profile_name)
     p = os.path.join(paths['output'], filename)
     if os.path.exists(p):
@@ -690,7 +803,7 @@ def delete_specific_scene(profile_name, filename):
     return False, "Cannot delete Lore"
 
 def get_last_scenes(profile_name):
-    """Fetches the last 3 generated scenes for narrative continuity."""
+    """Retrieves the trailing context (last 3 scenes) for continuity."""
     paths = get_paths(profile_name)
     files = glob.glob(os.path.join(paths['output'], "*.txt"))
     if not files: return "NO SCENES."
@@ -701,12 +814,13 @@ def get_last_scenes(profile_name):
     return context
 
 def compile_manuscript(profile_name, files):
-    """Concatenates selected files into a single manuscript string."""
+    """Compiles selected files into a single manuscript."""
     return "\n***\n".join([read_file_content(profile_name, f) for f in files])
 
 # --- CHAT PERSISTENCE ---
 
 def get_chat_history(profile_name):
+    """Loads chat history from the database."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
@@ -716,6 +830,7 @@ def get_chat_history(profile_name):
     return [{"role": r[0], "content": r[1]} for r in rows]
 
 def save_chat_message(profile_name, role, content):
+    """Appends a message to the persistent chat log."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30)
     c = conn.cursor()
@@ -724,6 +839,7 @@ def save_chat_message(profile_name, role, content):
     conn.close()
 
 def clear_chat_history(profile_name):
+    """Purges the chat history log."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()

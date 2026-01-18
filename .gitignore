@@ -8,9 +8,11 @@ pyvenv.cfg
 .env
 
 # Ignore the Local Database & User Data
-*.db
-*.sqlite3
 profiles/
+data/
+*.db
+*.json
+*.txt
 
 # Ignore VS Code settings
 .vscode/

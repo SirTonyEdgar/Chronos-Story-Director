@@ -7,3 +7,4 @@ langchain-core
 python-dotenv
 pypdf
 pandas
+streamlit-agraph
