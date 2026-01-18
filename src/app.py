@@ -9,6 +9,8 @@ Copyright (c) 2025 SirTonyEdgar
 Licensed under the MIT License.
 """
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
 import os
 import io
 import json
@@ -135,7 +137,7 @@ with st.sidebar:
     page = st.radio("Navigation", nav_options, label_visibility="collapsed")
     
     st.divider()
-    st.caption("v10.6 - GitHub Release")
+    st.caption("v11.1 - Network Map, Privacy Filters, and Dynamic Identity System")
 
 # ==========================================
 # MODULE: SCENE CREATOR
