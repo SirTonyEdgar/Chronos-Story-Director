@@ -137,7 +137,7 @@ with st.sidebar:
     page = st.radio("Navigation", nav_options, label_visibility="collapsed")
     
     st.divider()
-    st.caption("v11.1 - Network Map, Privacy Filters, and Dynamic Identity System")
+    st.caption("v11.1 - Hybrid Migration to Google GenAI SDK v1.0")
 
 # ==========================================
 # MODULE: SCENE CREATOR
