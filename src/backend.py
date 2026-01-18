@@ -541,11 +541,26 @@ def critique_scene(state: StoryState):
         return {"is_grounded": True, "critique_notes": ""}
     return {"is_grounded": False, "critique_notes": "Found banned content or logic break."}
 
+def auto_generate_title(profile_name, draft_text, brief):
+    """Generates a short, evocative title based on the generated scene content."""
+    prompt = f"""
+    TASK: Create a Title.
+    SCENE BRIEF: {brief}
+    SCENE CONTENT START: {draft_text[:1000]}...
+    
+    INSTRUCTION: Generate a short, punchy, dramatic title (max 6 words) for this scene. 
+    Examples: "The Red Wedding", "Midnight at the Docks", "Protocol Omega".
+    OUTPUT: The title text ONLY. No quotes.
+    """
+    llm = get_llm(profile_name, "chat")
+    return llm.invoke([HumanMessage(content=prompt)]).content.strip()
+
 def generate_scene(profile_name, year, date_str, time_str, title, brief, context_files_list=None, use_fog_of_war=False):
     """
     Entry point for the scene generation pipeline.
     Initializes the state graph, aggregates context, and executes the workflow.
     """
+    # GRAPH SETUP
     workflow = StateGraph(StoryState)
     workflow.add_node("drafter", draft_scene)
     workflow.add_node("validator", critique_scene)
@@ -554,7 +569,7 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
     workflow.add_conditional_edges("validator", lambda s: END if s['is_grounded'] or s['revision_count'] > 2 else "drafter")
     app = workflow.compile()
     
-    # Context Assembly
+    # CONTEXT ASSEMBLY
     context_str = ""
     if context_files_list:
         for fname in context_files_list:
@@ -567,7 +582,7 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
 
     settings = get_story_settings(profile_name)
     
-    # Heuristic Date/Time Inference
+    # HEURISTIC TIME INFERENCE
     use_time = settings.get('use_time_system', 'true').lower() == 'true'
     final_year = year
     final_date = date_str
@@ -582,13 +597,15 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
     try: final_year = int(final_year)
     except: final_year = 0
 
-    # Initial Workflow State
+    # INITIAL STATE
+    temp_title = title if title else "Untitled Processing..."
+
     initial_input = {
         "profile_name": profile_name,
         "year": final_year,
         "date_str": final_date,
         "time_str": final_time,
-        "scene_title": title,
+        "scene_title": temp_title,
         "scene_brief": brief,
         "recent_context": context_str,
         "revision_count": 0,
@@ -601,17 +618,32 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
     
     final_state = app.invoke(initial_input)
     
-    # Output Persistence
-    safe_title = re.sub(r'[\\/*?:"<>|]', "", title).replace(" ", "_")
-    safe_date = final_date.replace(" ", "-")
-    filename = f"{final_year}-{safe_date}_{safe_title}.txt"
+    # AUTO-TITLE LOGIC
+    final_title = title
+    if not final_title:
+        final_title = auto_generate_title(profile_name, final_state['current_draft'], brief)
+
+    # OUTPUT PERSISTENCE
+    safe_title = re.sub(r'[\\/*?:"<>|]', "", final_title).replace(" ", "_")
+    
+    if use_time:
+        safe_date = final_date.replace(" ", "-")
+        filename = f"{final_year}-{safe_date}_{safe_title}.txt"
+    else:
+        filename = f"{safe_title}.txt"
+    
     paths = get_paths(profile_name)
     filepath = os.path.join(paths['output'], filename)
     
     # Collision Avoidance
     counter = 1
     while os.path.exists(filepath):
-        filename = f"{final_year}-{safe_date}_{safe_title}_{counter}.txt"
+        # Handle duplicates for both formats
+        if use_time:
+            filename = f"{final_year}-{safe_date}_{safe_title}_{counter}.txt"
+        else:
+            filename = f"{safe_title}_{counter}.txt"
+            
         filepath = os.path.join(paths['output'], filename)
         counter += 1
         

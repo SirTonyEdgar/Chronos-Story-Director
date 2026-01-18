@@ -152,7 +152,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v11.3 - Compile as PDF/EPUB")
+    st.caption("v11.5 - Auto-Title Generation")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -183,7 +183,8 @@ if page == "🎬 Scene Creator":
             st.caption("⏳ Time System is Disabled.")
 
         # Briefing Inputs
-        title = st.text_input("Scene Title", placeholder="Required", key="sc_title")
+        title = st.text_input("Scene Title", placeholder="Optional (Auto-Generate if Empty)", key="sc_title")
+        
         all_files = ["Auto (Last 3 Scenes)"] + engine.get_all_files_list(profile)
         context_files = st.multiselect("Transition From:", all_files, default=[], key="sc_context")
         brief = st.text_area("Scene Brief", height=150, key="sc_brief", placeholder="Describe the action...")
@@ -192,8 +193,8 @@ if page == "🎬 Scene Creator":
         auto_privacy = st.checkbox("🕵️ Enable Fog of War (Auto-Tag Private Scenes)", value=False, help="If enabled, the AI will wrap private conversations in [[PRIVATE]] tags. Required for the Reaction Tool's 'Public Knowledge' mode.")
 
         if st.button("Generate Scene", type="primary", use_container_width=True, key="btn_gen_scene"):
-            if not title or not brief: 
-                st.error("Title and Brief required.")
+            if not brief: 
+                st.error("Scene Brief is required.")
             else:
                 with st.spinner("Drafting Narrative..."):
                     text, path = engine.generate_scene(
@@ -314,17 +315,17 @@ elif page == "⚔️ War Room":
                 st.success("Saved to Knowledge Base!")
 
 # ==========================================
-# MODULE: NETWORK MAP (DEDICATED)
+# MODULE: NETWORK MAP
 # ==========================================
 elif page == "🕸️ Network Map":
     st.header("🕸️ Empire Network Map")
     
-    # 1. Load State
+    # Load State
     if 'dashboard_state' not in st.session_state:
         st.session_state['dashboard_state'] = engine.get_world_state(profile)
     current_state = st.session_state['dashboard_state']
 
-    # 2. Controls & Interaction Lock
+    # Controls & Interaction Lock
     c1, c2 = st.columns([3, 1])
     with c1:
         st.info("💡 To add new characters or change connections, go to the **Status & Assets** page.")
@@ -337,9 +338,14 @@ elif page == "🕸️ Network Map":
 
     nodes = []
     edges = []
-    font_style = {'color': 'white', 'strokeWidth': 4, 'strokeColor': 'black', 'size': 18}
+    font_style = {'color': 'white', 'strokeWidth': 2, 'strokeColor': 'black', 'size': 24}
+    
+    # --- ID COLLISION TRACKER ---
+    existing_ids = set()
 
-    # 3. Build Nodes
+    edge_font = {'size': 20, 'color': 'black', 'align': 'middle', 'strokeWidth': 1.5, 'strokeColor': 'white'}
+
+    # Build Nodes
     p_data = current_state.get("Protagonist Status", {})
     p_name = p_data.get("Name", "Protagonist")
     p_icon_key = p_data.get("Icon", "Male")
@@ -353,6 +359,7 @@ elif page == "🕸️ Network Map":
         image=p_icon_url,
         font=font_style, x=0, y=0, fixed=True
     ))
+    existing_ids.add("MAIN")
     
     # Neighbor Nodes
     allies = current_state.get("Allies", [])
@@ -370,24 +377,46 @@ elif page == "🕸️ Network Map":
     # Combine Global Icon Maps
     FULL_ICON_MAP = {**RELATIONSHIP_ICONS, **AVATAR_MANIFEST}
 
+    # --- ALLY LOOP ---
     for ally in allies:
-        name = ally.get("Name", "Unknown")
-        # Default to 'Ally' handshake if not found
+        # Check 'Name' key, fallback to 'Unknown'
+        raw_name = ally.get("Name", "Unknown Ally")
+        
+        # Deduplicate ID (e.g. if two allies are named "Guard", make "Guard_1")
+        node_id = raw_name
+        counter = 1
+        while node_id in existing_ids:
+            node_id = f"{raw_name}_{counter}"
+            counter += 1
+        existing_ids.add(node_id)
+
         icon_url = FULL_ICON_MAP.get(ally.get("Icon", "Ally"), RELATIONSHIP_ICONS["Ally"])
         
         lx, ly = get_coords(current_idx, total, radius)
         current_idx += 1
-        nodes.append(Node(id=name, label=name, size=30, shape="circularImage", image=icon_url, font=font_style, x=lx, y=ly, fixed=True))
-        edges.append(Edge(source="MAIN", target=name, label=ally.get("Relation", "Ally"), color="#4CAF50"))
+        
+        nodes.append(Node(id=node_id, label=raw_name, size=30, shape="circularImage", image=icon_url, font=font_style, x=lx, y=ly, fixed=True))
+        edges.append(Edge(source="MAIN", target=node_id, label=ally.get("Relation", "Ally"), color="#4CAF50", font=edge_font))
 
+    # --- ASSET LOOP ---
     for asset in assets:
-        name = asset.get("Asset", "Unknown")
+        raw_name = asset.get("Asset", asset.get("Name", "Unknown Item"))
+        
+        # Deduplicate ID
+        node_id = raw_name
+        counter = 1
+        while node_id in existing_ids:
+            node_id = f"{raw_name}_{counter}"
+            counter += 1
+        existing_ids.add(node_id)
+
         lx, ly = get_coords(current_idx, total, radius)
         current_idx += 1
-        nodes.append(Node(id=name, label=name, size=25, shape="circularImage", image=RELATIONSHIP_ICONS["Resource"], font=font_style, x=lx, y=ly, fixed=True))
-        edges.append(Edge(source="MAIN", target=name, label=asset.get("Type", "Resource"), color="#FFC107"))
+        
+        nodes.append(Node(id=node_id, label=raw_name, size=25, shape="circularImage", image=RELATIONSHIP_ICONS["Resource"], font=font_style, x=lx, y=ly, fixed=True))
+        edges.append(Edge(source="MAIN", target=node_id, label=asset.get("Type", "Resource"), color="#FFC107", font=edge_font))
 
-    # 4. Render
+    # Render
     if len(nodes) > 1:
         with st.container(border=True):
             config = Config(
