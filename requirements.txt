@@ -8,3 +8,4 @@ python-dotenv
 pypdf
 pandas
 streamlit-agraph
+google-genai
