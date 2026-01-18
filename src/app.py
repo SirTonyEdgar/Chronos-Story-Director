@@ -623,12 +623,9 @@ elif page == "📊 Status & Assets":
             for v in current_vars:
                 if isinstance(v, dict): normalized_vars.append(v)
         
-        # Default Examples (If empty, helps user understand)
+        # Default Examples
         if not normalized_vars:
-            normalized_vars = [
-                {"Name": "Timeline Drift", "Value": "0%", "Mechanic": "As this increases, future predictions become vague/inaccurate."},
-                {"Name": "Federal Heat", "Value": "Low", "Mechanic": "If High, federal agents will investigate/intervene."},
-            ]
+            normalized_vars = []
 
         edited_vars = st.data_editor(
             normalized_vars,
