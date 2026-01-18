@@ -152,7 +152,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v11.5 - Auto-Title Generation")
+    st.caption("v11.6 - Skill Description")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -343,7 +343,7 @@ elif page == "🕸️ Network Map":
     # --- ID COLLISION TRACKER ---
     existing_ids = set()
 
-    edge_font = {'size': 20, 'color': 'black', 'align': 'middle', 'strokeWidth': 1.5, 'strokeColor': 'white'}
+    edge_font = {'size': 22, 'color': 'black', 'align': 'middle', 'strokeWidth': 1.5, 'strokeColor': 'white'}
 
     # Build Nodes
     p_data = current_state.get("Protagonist Status", {})
@@ -585,17 +585,31 @@ elif page == "📊 Status & Assets":
     # --- TAB: SKILLS ---
     with tab_skills:
         skills = current_state.get("Skills", [])
-        # Normalization for list-of-strings vs list-of-dicts
-        skill_dicts = [{"Skill": s} for s in skills] if skills and isinstance(skills[0], str) else (skills or [])
         
+        # Data Migration
+        normalized_skills = []
+        if skills:
+            for s in skills:
+                if isinstance(s, str):
+                    normalized_skills.append({"Skill": s, "Description": ""})
+                elif isinstance(s, dict):
+                    normalized_skills.append(s)
+        else:
+            normalized_skills = []
+        
+        # Editor Configuration
         edited_skills = st.data_editor(
-            skill_dicts,
+            normalized_skills,
             num_rows="dynamic",
             width="stretch",
-            column_config={"Skill": st.column_config.TextColumn("Skill Name", required=True)},
+            column_config={
+                "Skill": st.column_config.TextColumn("Skill Name", required=True),
+                "Description": st.column_config.TextColumn("Mechanics / Details", width="large")
+            },
             key="editor_skills"
         )
-        current_state["Skills"] = [d["Skill"] for d in edited_skills if d.get("Skill")]
+        
+        current_state["Skills"] = edited_skills
 
     # --- TAB: RAW JSON ---
     with tab_raw:
