@@ -22,6 +22,7 @@ import pandas as pd
 import streamlit as st
 from pypdf import PdfReader
 from streamlit_agraph import agraph, Node, Edge, Config
+import shutil
 
 # Internal Engine Import
 import backend as engine
@@ -137,7 +138,21 @@ with st.sidebar:
     page = st.radio("Navigation", nav_options, label_visibility="collapsed")
     
     st.divider()
-    st.caption("v11.1 - Hybrid Migration to Google GenAI SDK v1.0")
+
+    # --- EXPORT ---
+    with st.expander("📦 Export / Backup"):
+        if st.button("Download Profile as ZIP"):
+            shutil.make_archive(f"{profile}_backup", 'zip', engine.get_paths(profile)['root'])
+            
+            with open(f"{profile}_backup.zip", "rb") as f:
+                st.download_button(
+                    label="Click to Download",
+                    data=f,
+                    file_name=f"{profile}_Backup_{datetime.date.today()}.zip",
+                    mime="application/zip"
+                )
+
+    st.caption("v11.2 - Safety Update (Backups & Context Fix)")
 
 # ==========================================
 # MODULE: SCENE CREATOR

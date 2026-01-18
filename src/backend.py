@@ -16,6 +16,8 @@ import json
 import sqlite3
 from typing import TypedDict, Optional, List, Dict, Any
 from dotenv import load_dotenv
+import shutil
+import datetime
 
 # Third-Party Dependencies
 from google import genai as new_genai
@@ -60,6 +62,24 @@ class StoryState(TypedDict):
     use_fog_of_war: bool
 
 # --- HELPER FUNCTIONS ---
+
+def save_world_state(profile_name: str, new_state_dict: Dict):
+    paths = get_paths(profile_name)
+    try:
+        if os.path.exists(paths['state']):
+            backup_name = f"world_state_backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            backup_path = os.path.join(paths['data'], backup_name)
+            shutil.copy(paths['state'], backup_path)
+            
+            backups = sorted(glob.glob(os.path.join(paths['data'], "world_state_backup_*.json")))
+            for old_b in backups[:-5]:
+                os.remove(old_b)
+
+        with open(paths['state'], 'w') as f: 
+            json.dump(new_state_dict, f, indent=4)
+        return True, "State Saved"
+    except Exception as e: 
+        return False, str(e)
 
 def _extract_json(text: str) -> Dict:
     """
@@ -468,9 +488,11 @@ def draft_scene(state: StoryState):
     
     *** WORLD LAWS & MECHANICS (STRICT) ***
     {rules}
-    
     {privacy_protocol}
     
+    *** STORY BIBLE (LORE) ***
+    {lore}
+
     *** WORLD STATE & PROJECTS ***
     {json.dumps(state_tracking)}
     
@@ -624,14 +646,26 @@ def run_chat_query(profile_name, user_input):
     """Interacts with the Co-Author persona, aware of full narrative context."""
     lore, rules, plan, facts, spoilers = get_full_context_data(profile_name)
     state = get_world_state(profile_name)
+
+    recent_scenes = get_last_scenes(profile_name)
     
     prompt = f"""
     ROLE: Co-Author. 
-    CONTEXT: {facts}, {plan[:2000]}. 
-    WORLD RULES: {rules}
-    STATE: {state}. 
-    USER: {user_input}
+    
+    *** STORY BIBLE ***
+    LORE: {lore}
+    RULES: {rules}
+    ESTABLISHED FACTS: {facts}
+    FUTURE PLANS: {plan[:3000]}
+    
+    *** CURRENT STATUS ***
+    WORLD STATE: {state}
+    RECENT NARRATIVE: {recent_scenes}
+    
+    *** USER QUERY ***
+    {user_input}
     """
+    
     llm = get_llm(profile_name, "chat")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
