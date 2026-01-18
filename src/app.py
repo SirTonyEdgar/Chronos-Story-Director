@@ -152,7 +152,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v11.6 - Skill Description")
+    st.caption("v11.7 - Logic Engine Update")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -916,9 +916,33 @@ elif page == "⚙️ Settings":
             safe_default = available_models[0] if available_models else "No Models Detected"
             def get_idx(val, opts): return opts.index(val) if val in opts else 0
             
-            m_scene = st.selectbox("Scene Writer", available_models, index=get_idx(curr.get('model_scene', safe_default), available_models))
-            m_chat = st.selectbox("Co-Author", available_models, index=get_idx(curr.get('model_chat', safe_default), available_models))
-            m_react = st.selectbox("Reaction Engine", available_models, index=get_idx(curr.get('model_reaction', safe_default), available_models))
+            m_scene = st.selectbox(
+                "Scene Writer", 
+                available_models, 
+                index=get_idx(curr.get('model_scene', safe_default), available_models),
+                help="Generates the main story prose and narrative content."
+            )
+            
+            m_chat = st.selectbox(
+                "Co-Author", 
+                available_models, 
+                index=get_idx(curr.get('model_chat', safe_default), available_models),
+                help="Handles the Chat interface for brainstorming, lore Q&A, and plot planning."
+            )
+            
+            m_react = st.selectbox(
+                "Reaction Engine", 
+                available_models, 
+                index=get_idx(curr.get('model_reaction', safe_default), available_models),
+                help="Simulates faction reactions (Reaction Tool)."
+            )
+            
+            m_analysis = st.selectbox(
+                "Logic & Strategy Engine", 
+                available_models, 
+                index=get_idx(curr.get('model_analysis', safe_default), available_models), 
+                help="Handles the deep reasoning for War Room Simulations and World State Analysis."
+            )
 
         # Dynamic Timeline Logic
         if use_t:
@@ -950,6 +974,7 @@ elif page == "⚙️ Settings":
             engine.update_story_setting(profile, 'model_scene', m_scene)
             engine.update_story_setting(profile, 'model_chat', m_chat)
             engine.update_story_setting(profile, 'model_reaction', m_react)
+            engine.update_story_setting(profile, 'model_analysis', m_analysis)
             
             # Update Timelines in JSON
             if use_t:

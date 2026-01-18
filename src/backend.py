@@ -151,7 +151,8 @@ def get_llm(profile_name: str, task_type: str = "scene", settings: Optional[dict
     model_map = {
         "scene": "model_scene",
         "chat": "model_chat",
-        "reaction": "model_reaction"
+        "reaction": "model_reaction",
+        "analysis": "model_analysis"
     }
     target_key = model_map.get(task_type, "model_chat")
     model_name = settings.get(target_key, "gemini-2.5-flash")
@@ -424,10 +425,9 @@ def analyze_state_changes(profile_name, scene_content):
     OUTPUT: Return ONLY the updated JSON.
     """
     
-    llm = get_llm(profile_name, "chat") 
+    llm = get_llm(profile_name, "analysis") 
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content
-        # Use robust extractor instead of simple replace
         return _extract_json(res)
     except Exception as e: 
         print(f"Analysis Error: {e}")
@@ -825,7 +825,7 @@ def run_war_room_simulation(profile_name, action_input):
     [Go / No-Go recommendation]
     """
     
-    llm = get_llm(profile_name, "reaction")
+    llm = get_llm(profile_name, "analysis")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
 # --- UTILITIES & FILE I/O ---
