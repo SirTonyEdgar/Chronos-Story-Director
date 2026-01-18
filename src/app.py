@@ -51,10 +51,10 @@ RELATIONSHIP_ICONS = {
     "Ally": "https://img.icons8.com/plasticine/100/handshake.png",
     "Family": "https://img.icons8.com/plasticine/100/family.png",
     "Enemy": "https://img.icons8.com/plasticine/100/skull.png",
-    "Rival": "https://img.icons8.com/plasticine/100/fencing.png",
+    "Rival": "https://img.icons8.com/?size=100&id=zxQyGJlfB0DJ&format=png&color=000000",
     "Love": "https://img.icons8.com/plasticine/100/like--v1.png",
     "Mentor": "https://img.icons8.com/plasticine/100/wizard.png",
-    "Vassal": "https://img.icons8.com/plasticine/100/kneeling.png",
+    "Vassal": "https://img.icons8.com/?size=100&id=MG9ci5zWEW89&format=png&color=000000",
     "Target": "https://img.icons8.com/plasticine/100/goal.png",
     "Resource": "https://img.icons8.com/plasticine/100/money-bag.png",
     "Unknown": "https://img.icons8.com/plasticine/100/question-mark.png"
@@ -543,9 +543,9 @@ elif page == "📊 Status & Assets":
         edited_allies_df = st.data_editor(
             df_allies,
             num_rows="dynamic", 
-            width="stretch",
+            use_container_width=True,
             column_config={
-                "Name": st.column_config.TextColumn("Name", required=True),
+                "Name": st.column_config.TextColumn("Name", required=True, width="medium"),
                 "Relation": st.column_config.TextColumn("Relation", default="Ally"),
                 "Loyalty": st.column_config.NumberColumn("Loyalty %", min_value=0, max_value=100, default=50),
                 "Icon": st.column_config.SelectboxColumn(
@@ -555,7 +555,7 @@ elif page == "📊 Status & Assets":
                     default="Ally",
                     help="Select an icon type."
                 ),
-                "Notes": st.column_config.TextColumn("Notes")
+                "Notes": st.column_config.TextColumn("Notes", width="large")
             },
             key="editor_allies"
         )
@@ -601,9 +601,9 @@ elif page == "📊 Status & Assets":
         edited_skills = st.data_editor(
             normalized_skills,
             num_rows="dynamic",
-            width="stretch",
+            use_container_width=True,
             column_config={
-                "Skill": st.column_config.TextColumn("Skill Name", required=True),
+                "Skill": st.column_config.TextColumn("Skill Name", required=True, width="medium"),
                 "Description": st.column_config.TextColumn("Mechanics / Details", width="large")
             },
             key="editor_skills"
@@ -617,28 +617,31 @@ elif page == "📊 Status & Assets":
         
         current_vars = current_state.get("World Variables", [])
         
-        # Migration (Handle generic lists)
+        # Normalize Data (Handle legacy lists)
         normalized_vars = []
         if current_vars:
             for v in current_vars:
                 if isinstance(v, dict): normalized_vars.append(v)
         
-        # Default Examples
-        if not normalized_vars:
-            normalized_vars = []
+        # FORCE SCHEMA
+        df_vars = pd.DataFrame(normalized_vars)
+        if df_vars.empty:
+            df_vars = pd.DataFrame(columns=["Name", "Value", "Mechanic"])
 
+        # Render Editor
         edited_vars = st.data_editor(
-            normalized_vars,
+            df_vars,
             num_rows="dynamic",
-            width="stretch",
+            use_container_width=True,
             column_config={
-                "Name": st.column_config.TextColumn("Variable Name", required=True),
+                "Name": st.column_config.TextColumn("Variable Name", required=True, width="medium"),
                 "Value": st.column_config.TextColumn("Current State", width="small"),
                 "Mechanic": st.column_config.TextColumn("Logic / Consequence Rule", width="large", help="Tell the AI how this variable affects the story.")
             },
             key="editor_vars"
         )
-        current_state["World Variables"] = edited_vars
+        
+        current_state["World Variables"] = edited_vars.to_dict(orient="records")
 
     # --- TAB: RAW JSON ---
     with tab_raw:
