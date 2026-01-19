@@ -616,9 +616,9 @@ elif page == "📊 World State Tracker":
                 with st.expander(f"Manage: {proj['Name']} ({proj['Progress']}%)"):
                     st.write(f"**Goal:** {proj['Description']}")
                     
-                    new_specs = st.text_area(f"Technical Specs", value=proj['Features_Specs'], key=f"spec_{i}", height=100)
+                    new_specs = st.text_area(f"Technical Specs", value=proj.get('Features_Specs', ''), key=f"spec_{i}", height=100)
 
-                    new_prog = st.slider("Progress Override", 0, 100, proj['Progress'], key=f"prog_{i}")
+                    new_prog = st.slider("Progress Override", 0, 100, prog_val, key=f"prog_{i}")
                     
                     c_up, c_arc = st.columns([1, 1])
                     if c_up.button("Update Status", key=f"upd_{i}"):
