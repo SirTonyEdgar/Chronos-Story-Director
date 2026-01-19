@@ -160,7 +160,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.5 - Unified State Management & Analysis Safeguards")
+    st.caption("v12.6 - Project Tracker Refinement & State Synchronization")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -598,8 +598,12 @@ elif page == "📊 World State Tracker":
                 with c2:
                     n_desc = st.text_input("Objective", placeholder="e.g. Create predictive RAM algorithm")
                 n_specs = st.text_area("Initial Specifications", height=100)
+                
                 if st.form_submit_button("Initialize Project"):
                     engine.add_project(profile, n_name, n_desc, n_specs)
+                    # Force reload to clear cache
+                    if 'dashboard_state' in st.session_state:
+                        del st.session_state['dashboard_state']
                     st.rerun()
 
         st.divider()
@@ -609,31 +613,63 @@ elif page == "📊 World State Tracker":
             st.info("No active projects. Start one above.")
         else:
             for i, proj in enumerate(projects):
-                prog_val = proj.get('Progress', 0)
-                st.markdown(f"**{proj['Name']}**")
-                st.progress(proj['Progress'] / 100)
+                # Safe Data Retrieval
+                p_name = proj.get('Name', 'Unnamed Project')
+                p_desc = proj.get('Description', 'No objective defined.')
+                p_prog = proj.get('Progress', 0)
+                p_specs = proj.get('Features_Specs', '')
+
+                # --- READ-ONLY VIEW ---
+                st.markdown(f"### 🏗️ {p_name}")
+                st.caption(f"**Objective:** {p_desc}")
                 
-                with st.expander(f"Manage: {proj['Name']} ({proj['Progress']}%)"):
-                    st.write(f"**Goal:** {proj['Description']}")
+                st.write(f"**Status:** {p_prog}% Complete")
+                
+                st.progress(p_prog / 100)
+                
+                # --- EDITING INTERFACE ---
+                with st.expander(f"⚙️ Edit / Manage: {p_name}"):
+                    # Editable Name & Objective
+                    c_edit1, c_edit2 = st.columns([1, 2])
+                    new_name = c_edit1.text_input("Project Name", value=p_name, key=f"name_{i}")
+                    new_desc = c_edit2.text_input("Objective", value=p_desc, key=f"desc_{i}")
                     
-                    new_specs = st.text_area(f"Technical Specs", value=proj.get('Features_Specs', ''), key=f"spec_{i}", height=100)
-
-                    new_prog = st.slider("Progress Override", 0, 100, prog_val, key=f"prog_{i}")
+                    # Editable Specs
+                    new_specs = st.text_area("Technical Specs", value=p_specs, key=f"spec_{i}", height=100)
                     
-                    c_up, c_arc = st.columns([1, 1])
-                    if c_up.button("Update Status", key=f"upd_{i}"):
-                        engine.update_project(profile, i, new_prog, new_specs)
-                        st.success("Project Updated")
+                    # Editable Progress
+                    new_prog = st.slider("Progress %", 0, 100, p_prog, key=f"prog_{i}")
+                    
+                    # Action Buttons
+                    c_up, c_arc, c_del = st.columns([1, 1, 1])
+                    
+                    # Save / Update
+                    if c_up.button("💾 Save Changes", key=f"upd_{i}", use_container_width=True):
+                        engine.update_project(profile, i, new_prog, new_specs, new_name=new_name, new_desc=new_desc)
+                        if 'dashboard_state' in st.session_state:
+                            del st.session_state['dashboard_state']
+                        st.success("Saved!")
                         st.rerun()
-
-                    with c_arc.popover("✅ Complete Project"):
-                        st.caption("This will archive the project and add it to 'Facts' as finished technology.")
-                        final_hist = st.text_area("Final Historical Record", value=f"Completed. Final Specs: {new_specs}", height=100)
+                    
+                    # Complete
+                    with c_arc.popover("✅ Complete", use_container_width=True):
+                        st.caption("Archive as historical fact?")
+                        final_hist = st.text_area("Final Result", value=f"Completed: {new_name}. Specs: {new_specs}", height=100, key=f"hist_{i}")
                         if st.button("Confirm Completion", key=f"fin_{i}"):
-                            success, msg = engine.complete_project(profile, i, final_hist)
-                            if success:
-                                st.balloons()
-                                st.rerun()
+                            engine.complete_project(profile, i, final_hist)
+                            st.balloons()
+                            st.rerun()
+
+                    # Delete
+                    with c_del.popover("🗑️ Delete", use_container_width=True):
+                        st.error("This cannot be undone.")
+                        if st.button("Confirm Deletion", key=f"del_{i}", type="primary"):
+                            del current_state["Projects"][i]
+                            engine.save_world_state(profile, current_state)
+                            st.rerun()
+                
+                if i < len(projects) - 1:
+                    st.divider()
 
     # --- TAB: RELATIONS ---
     with tab_allies:

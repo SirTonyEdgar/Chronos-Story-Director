@@ -373,16 +373,6 @@ def get_world_state(profile_name: str) -> Dict:
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
-def save_world_state(profile_name: str, new_state_dict: Dict):
-    """Writes updates to the world state JSON."""
-    paths = get_paths(profile_name)
-    try:
-        with open(paths['state'], 'w') as f: 
-            json.dump(new_state_dict, f, indent=4)
-        return True, "State Saved"
-    except Exception as e: 
-        return False, str(e)
-
 def add_project(profile_name, name, description, features):
     """Initialize a new tracked project in the world state."""
     state = get_world_state(profile_name)
@@ -391,12 +381,15 @@ def add_project(profile_name, name, description, features):
     state["Projects"].append(new_proj)
     save_world_state(profile_name, state)
 
-def update_project(profile_name, project_index, progress, notes):
-    """Updates progress or specifications for an existing project."""
+def update_project(profile_name, project_index, progress, notes, new_name=None, new_desc=None):
+    """Updates progress, specifications, name, and description for an existing project."""
     state = get_world_state(profile_name)
     if "Projects" in state and 0 <= project_index < len(state["Projects"]):
         state["Projects"][project_index]["Progress"] = progress
-        if notes: state["Projects"][project_index]["Features_Specs"] = notes
+        if notes is not None: state["Projects"][project_index]["Features_Specs"] = notes
+        if new_name is not None: state["Projects"][project_index]["Name"] = new_name
+        if new_desc is not None: state["Projects"][project_index]["Description"] = new_desc
+        
         save_world_state(profile_name, state)
 
 def complete_project(profile_name, project_index, custom_lore_text):
