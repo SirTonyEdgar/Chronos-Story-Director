@@ -9,6 +9,7 @@ Copyright (c) 2025 SirTonyEdgar
 Licensed under the MIT License.
 """
 
+import sqlite3
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
 import os
@@ -160,7 +161,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v13.0 - Faction Memory")
+    st.caption("v13.1 - Reaction Undo Function")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -933,7 +934,7 @@ elif page == "🗄️ Knowledge Base":
                 st.rerun()
 
 # ==========================================
-# MODULE: REACTION TOOL (Genre-Agnostic)
+# MODULE: REACTION TOOL
 # ==========================================
 elif page == "🗣️ Reaction Tool":
     st.header("🗣️ Faction Reaction Engine")
@@ -1021,26 +1022,52 @@ elif page == "🗣️ Reaction Tool":
         
         st.divider()
         
-        if st.button("Simulate Reaction", type="primary"):
-            if not target_faction:
-                st.error("Please specify a Faction.")
-            else:
-                full_style_prompt = f"{selected_category} -> {final_style_instruction}"
-                
-                with st.spinner(f"Simulating ({final_style_instruction})..."):
-                    success, res = engine.generate_reaction_for_scene(
-                        profile, target_scene, target_faction, 
-                        public_only=is_public, 
-                        format_style=full_style_prompt,
-                        custom_instructions=extra_prompt
-                    )
+        col_sim, col_undo = st.columns([4, 1])
+
+        with col_sim:
+            # THE SIMULATE BUTTON
+            if st.button("Simulate Reaction", type="primary", use_container_width=True):
+                if not target_faction:
+                    st.error("Please specify a Faction.")
+                else:
+                    full_style_prompt = f"{selected_category} -> {final_style_instruction}"
                     
-                    if success: 
-                        st.success("Reaction Generated & Saved!")
-                        st.markdown(f"### Output Preview")
-                        st.write(res)
-                    else: 
-                        st.error(res)
+                    with st.spinner(f"Simulating ({final_style_instruction})..."):
+                        success, res = engine.generate_reaction_for_scene(
+                            profile, target_scene, target_faction, 
+                            public_only=is_public, 
+                            format_style=full_style_prompt,
+                            custom_instructions=extra_prompt
+                        )
+                        
+                        if success: 
+                            st.success("Reaction Generated & Saved!")
+                            st.markdown(f"### Output Preview")
+                            st.write(res)
+                        else: 
+                            st.error(res)
+
+        with col_undo:
+            if st.button("Undo ⎌", help="Deletes last memory AND removes text from file.", use_container_width=True):
+                if not target_faction:
+                    st.error("Target Faction required.")
+                else:
+                    file_success, file_msg = engine.undo_last_reaction_text(profile, target_scene, target_faction)
+
+                    try:
+                        conn = sqlite3.connect(engine.get_paths(profile)['db'])
+                        c = conn.cursor()
+                        c.execute("DELETE FROM faction_memory WHERE id = (SELECT MAX(id) FROM faction_memory WHERE faction_name = ?)", (target_faction,))
+                        conn.commit()
+                        conn.close()
+                        db_msg = "Memory Wiped"
+                    except Exception as e:
+                        db_msg = f"DB Error: {e}"
+
+                    if file_success:
+                        st.success(f"Rewind Complete: {file_msg} + {db_msg}")
+                    else:
+                        st.warning(f"Partial Rewind: {db_msg}. File warning: {file_msg} (You may need to delete text manually).")
 
 # ==========================================
 # MODULE: CO-AUTHOR CHAT

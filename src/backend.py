@@ -1016,6 +1016,36 @@ def delete_specific_scene(profile_name, filename):
         return True, "Deleted"
     return False, "Cannot delete Lore"
 
+def undo_last_reaction_text(profile_name, filename, faction):
+    """
+    Removes the last appended reaction for a specific faction from the text file.
+    SAFEGUARD: Only deletes if the file explicitly ends with a reaction block for this faction.
+    """
+    paths = get_paths(profile_name)
+    filepath = os.path.join(paths['output'], filename)
+    
+    if not os.path.exists(filepath): return False, "File not found."
+    
+    with open(filepath, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    header_marker = f">>> REACTION: {faction}"
+    
+    if header_marker not in content:
+        return False, "No reaction text found in file."
+
+    parts = content.rsplit(header_marker, 1)
+    
+    if len(parts) < 2:
+        return False, "Could not isolate reaction block."
+
+    clean_content = parts[0].rstrip()
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(clean_content)
+        
+    return True, "Reaction text stripped from file."
+
 def get_last_scenes(profile_name):
     """Retrieves the trailing context (last 3 scenes) for continuity."""
     paths = get_paths(profile_name)
