@@ -253,52 +253,6 @@ if page == "🎬 Scene Creator":
                 st.rerun()
 
 # ==========================================
-# MODULE: PROJECTS
-# ==========================================
-elif page == "🚧 Projects":
-    st.header("🚧 Project & Tech Tracker")
-    state = engine.get_world_state(profile)
-    projects = state.get("Projects", [])
-    
-    tab_active, tab_new = st.tabs(["Active Projects", "Start New Project"])
-    
-    with tab_active:
-        if not projects: 
-            st.info("No active projects tracked.")
-        else:
-            for i, proj in enumerate(projects):
-                with st.expander(f"{proj['Name']} ({proj['Progress']}%)"):
-                    st.write(f"**Goal:** {proj['Description']}")
-                    new_specs = st.text_area(f"Specs", value=proj['Features_Specs'], key=f"spec_{i}", height=100)
-                    new_prog = st.slider("Progress", 0, 100, proj['Progress'], key=f"prog_{i}")
-                    
-                    c1, c2 = st.columns([1, 1])
-                    if c1.button("Update Status", key=f"upd_{i}"):
-                        engine.update_project(profile, i, new_prog, new_specs)
-                        st.success("Project Updated")
-                        st.rerun()
-                    
-                    with st.popover("✅ Archive / Complete"):
-                        st.markdown(f"**Finalize: {proj['Name']}**")
-                        default_history = f"Completed. Specs: {new_specs}"
-                        final_history = st.text_area("Historical Record", value=default_history, height=150)
-                        if st.button("Confirm Completion", key=f"arch_{i}"):
-                            success, msg = engine.complete_project(profile, i, final_history)
-                            if success:
-                                st.balloons()
-                                st.success(msg)
-                                st.rerun()
-    
-    with tab_new:
-        with st.form("new_proj"):
-            n_name = st.text_input("Project Name")
-            n_desc = st.text_input("Objective")
-            n_specs = st.text_area("Initial Specifications")
-            if st.form_submit_button("Launch Project"):
-                engine.add_project(profile, n_name, n_desc, n_specs)
-                st.rerun()
-
-# ==========================================
 # MODULE: WAR ROOM
 # ==========================================
 elif page == "⚔️ War Room":
@@ -634,12 +588,11 @@ elif page == "📊 World State Tracker":
                 # --- EDITING INTERFACE ---
                 with st.expander(f"⚙️ Edit / Manage: {p_name}"):
                     # Editable Name & Objective
-                    c_edit1, c_edit2 = st.columns([1, 2])
-                    new_name = c_edit1.text_input("Project Name", value=p_name, key=f"name_{i}")
-                    new_desc = c_edit2.text_input("Objective", value=p_desc, key=f"desc_{i}")
+                    new_name = st.text_input("Project Name", value=p_name, key=f"name_{i}")
+                    new_desc = st.text_area("Objective", value=p_desc, key=f"desc_{i}", height=150)
                     
                     # Editable Specs
-                    new_specs = st.text_area("Technical Specs", value=p_specs, key=f"spec_{i}", height=100)
+                    new_specs = st.text_area("Technical Specs", value=p_specs, key=f"spec_{i}", height=300)
                     
                     # Editable Progress
                     new_prog = st.slider("Progress %", 0, 100, p_prog, key=f"prog_{i}")
