@@ -160,7 +160,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.6 - Project Tracker Refinement & State Synchronization")
+    st.caption("v12.7 - ")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -231,13 +231,17 @@ if page == "🎬 Scene Creator":
     with tab_edit:
         paths = engine.get_paths(profile)
         files = [os.path.basename(f) for f in glob.glob(os.path.join(paths['output'], "*.txt"))]
+        files.sort(reverse=True)
+
         if files:
             sel = st.selectbox("Edit File:", files, key="sc_edit_select")
             cont = engine.read_file_content(profile, sel)
-            new_c = st.text_area("Editor", value=cont, height=600, key="sc_editor_area")
-            if st.button("Save Changes", key="btn_save_edit"):
+            
+            new_c = st.text_area("Editor", value=cont, height=600, key=f"editor_{sel}")
+
+            if st.button("Save Changes", key=f"save_{sel}"):
                 engine.save_edited_scene(profile, sel, new_c)
-                st.success("File Updated!")
+                st.success(f"Saved: {sel}")
 
     with tab_manage:
         paths = engine.get_paths(profile)
