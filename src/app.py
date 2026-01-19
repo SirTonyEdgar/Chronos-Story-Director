@@ -160,7 +160,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.7 - ")
+    st.caption("v12.7 - Manuscript Polishing & Editor Fixes")
 
 # ==========================================
 # MODULE: SCENE CREATOR
