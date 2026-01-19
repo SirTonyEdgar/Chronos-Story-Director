@@ -335,7 +335,7 @@ elif page == "⚔️ War Room":
 # MODULE: NETWORK MAP
 # ==========================================
 elif page == "🕸️ Network Map":
-    st.header("🕸️ Empire Network Map")
+    st.header("🕸️ Network Map")
     
     # Load State
     if 'dashboard_state' not in st.session_state:
