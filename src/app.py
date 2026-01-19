@@ -160,7 +160,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.8 - Project Tracker QoL Patch")
+    st.caption("v13.0 - Faction Memory")
 
 # ==========================================
 # MODULE: SCENE CREATOR

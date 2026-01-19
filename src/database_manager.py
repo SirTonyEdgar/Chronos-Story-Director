@@ -2,31 +2,13 @@
 Chronos Story Director - Data Ingestion Utility
 ===============================================
 A command-line tool for bulk importing text and PDF documents into 
-the Chronos RAG database. Useful for initial project setup or 
-mass-ingesting lore libraries.
+the Chronos RAG database.
 
 Copyright (c) 2025 SirTonyEdgar
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 """
 
 import os
+import re
 import glob
 import sqlite3
 from typing import Optional
@@ -38,10 +20,7 @@ from pypdf import PdfReader
 import backend as engine
 
 def read_text_safe(filepath: str) -> str:
-    """
-    Reads a text file with encoding fallback. 
-    Attempts UTF-8 first, then falls back to ISO-8859-1 (Latin-1).
-    """
+    """Reads a text file with encoding fallback."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             return f.read()
@@ -51,15 +30,10 @@ def read_text_safe(filepath: str) -> str:
             return f.read()
 
 def ingest_profile_data(profile_name: str):
-    """
-    Scans the profile's 'input' directories (lore, plans, rules) and 
-    inserts new files into the SQLite database.
-    """
+    """Scans the profile's 'input' directories and inserts new files."""
     paths = engine.get_paths(profile_name)
     db_path = paths['db']
     
-    # Define Source Directories
-    # Structure: profiles/{name}/input/{type}
     base_input = os.path.dirname(paths['lore'])
     source_dirs = {
         "Lore": paths['lore'],
@@ -67,49 +41,38 @@ def ingest_profile_data(profile_name: str):
         "Rulebook": os.path.join(base_input, "rules")
     }
 
-    # Auto-create directories if missing
+    # Auto-create directories
     for d in source_dirs.values():
         os.makedirs(d, exist_ok=True)
 
-    print(f"\n--- 📂 INGESTING TARGET: {profile_name} ---")
-    print(f"Database: {db_path}")
+    print(f"\n--- 📂 INGESTING LORE & RULES: {profile_name} ---")
 
     try:
         conn = sqlite3.connect(db_path, timeout=30)
         c = conn.cursor()
     except sqlite3.Error as e:
-        print(f"[ERROR] Could not connect to database: {e}")
+        print(f"[ERROR] Connection failed: {e}")
         return
 
-    # Processing Loop
     for doc_type, folder_path in source_dirs.items():
-        if not os.path.exists(folder_path): 
-            continue
+        if not os.path.exists(folder_path): continue
         
-        # Collect supported files
         files = glob.glob(os.path.join(folder_path, "*.txt")) + \
                 glob.glob(os.path.join(folder_path, "*.pdf"))
         
-        if files:
-            print(f"\nScanning [{doc_type}] in: {folder_path}...")
+        if files: print(f"\nScanning [{doc_type}] in: {folder_path}...")
         
         new_count = 0
-        
         for filepath in files:
             filename = os.path.basename(filepath)
             
-            # Idempotency Check (Skip if already exists)
+            # Idempotency Check
             c.execute("SELECT id FROM memory_fragments WHERE source_filename = ?", (filename,))
-            if c.fetchone():
-                continue
+            if c.fetchone(): continue
 
-            content: Optional[str] = None
-            
-            # Handler: Text Files
+            content = None
             if filename.endswith(".txt"):
                 content = read_text_safe(filepath)
-            
-            # Handler: PDF Files
             elif filename.endswith(".pdf"):
                 try:
                     reader = PdfReader(filepath)
@@ -118,51 +81,114 @@ def ingest_profile_data(profile_name: str):
                     print(f"  [ERROR] PDF Parsing Failed for {filename}: {e}")
                     continue
             
-            # Insert into DB
             if content:
                 print(f"  [+] Importing: {filename}")
-                c.execute(
-                    "INSERT INTO memory_fragments (source_filename, content, type) VALUES (?, ?, ?)", 
-                    (filename, content, doc_type)
-                )
+                c.execute("INSERT INTO memory_fragments (source_filename, content, type) VALUES (?, ?, ?)", 
+                          (filename, content, doc_type))
                 new_count += 1
 
-        if new_count == 0 and files:
-            print("  (No new files found)")
+        if new_count == 0 and files: print("  (No new files found)")
 
     conn.commit()
     conn.close()
     print("\n--- ✅ Ingestion Complete ---")
 
-def main():
-    print("========================================")
-    print("   CHRONOS DATA INGESTION UTILITY")
-    print("========================================")
+def backfill_reactions(profile_name: str):
+    """
+    Scans existing scene files in 'output/scenes', finds '>>> REACTION' blocks,
+    and populates the 'faction_memory' table so the AI remembers past voices.
+    """
+    paths = engine.get_paths(profile_name)
+    db_path = paths['db']
+    scene_dir = paths['output']
     
-    profiles = engine.list_profiles()
-    
-    if not profiles:
-        print("\n[!] No profiles detected.")
-        print("Please launch the main application to create a profile first.")
-        return
-
-    print("\nAvailable Profiles:")
-    for i, p in enumerate(profiles):
-        print(f"{i+1}. {p}")
-    
-    choice = input("\nSelect Profile Number (or 'q' to quit): ")
-    if choice.lower() in ['q', 'quit', 'exit']:
-        return
+    print(f"\n--- 🗣️ BACKFILLING REACTION MEMORY: {profile_name} ---")
     
     try:
-        idx = int(choice) - 1
-        if 0 <= idx < len(profiles):
+        conn = sqlite3.connect(db_path, timeout=30)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS faction_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            faction_name TEXT,
+            reaction_text TEXT,
+            source_scene TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
+    except sqlite3.Error as e:
+        print(f"[ERROR] Database error: {e}")
+        return
+
+    files = glob.glob(os.path.join(scene_dir, "*.txt"))
+    files.sort()
+    
+    count = 0
+    
+    for filepath in files:
+        filename = os.path.basename(filepath)
+        content = read_text_safe(filepath)
+        
+        if ">>> REACTION:" in content:
+            parts = re.split(r'>>> REACTION:', content)
+            
+            for part in parts[1:]:
+                header_match = re.search(r'\s*(.*?) \|\s*(.*?) <<<', part)
+                if header_match:
+                    faction = header_match.group(1).strip()
+                    
+                    body = re.sub(r'\s*(.*?) \|\s*(.*?) <<<(\n✨.*)?', '', part, count=1).strip()
+
+                    c.execute("SELECT id FROM faction_memory WHERE source_scene = ? AND faction_name = ?", (filename, faction))
+                    if not c.fetchone():
+                        c.execute("INSERT INTO faction_memory (faction_name, reaction_text, source_scene) VALUES (?, ?, ?)",
+                                  (faction, body, filename))
+                        print(f"  [+] Learned Voice: {faction} (from {filename})")
+                        count += 1
+    
+    conn.commit()
+    conn.close()
+    print(f"\n--- ✅ Backfill Complete. Imported {count} legacy reactions. ---")
+
+def main():
+    while True:
+        print("\n========================================")
+        print("   CHRONOS DATA MANAGER (v12.8)")
+        print("========================================")
+        
+        profiles = engine.list_profiles()
+        if not profiles:
+            print("\n[!] No profiles detected.")
+            return
+
+        print("Available Profiles:")
+        for i, p in enumerate(profiles):
+            print(f"{i+1}. {p}")
+        
+        p_choice = input("\nSelect Profile Number (or 'q' to quit): ")
+        if p_choice.lower() in ['q', 'quit', 'exit']: break
+        
+        try:
+            idx = int(p_choice) - 1
+            if not (0 <= idx < len(profiles)):
+                print("[!] Invalid profile.")
+                continue
+            
             target_profile = profiles[idx]
-            ingest_profile_data(target_profile)
-        else:
-            print("[!] Invalid selection index.")
-    except ValueError:
-        print("[!] Invalid input. Please enter a number.")
+            
+            print(f"\nSelected: {target_profile}")
+            print("1. Ingest Lore/Rules/Plans (Standard)")
+            print("2. Backfill Reaction Memory (Import from Scenes)")
+            
+            op = input("Select Operation [1-2]: ")
+            
+            if op == "1":
+                ingest_profile_data(target_profile)
+            elif op == "2":
+                backfill_reactions(target_profile)
+            else:
+                print("[!] Invalid operation.")
+                
+        except ValueError:
+            print("[!] Invalid input.")
 
 if __name__ == "__main__":
     main()

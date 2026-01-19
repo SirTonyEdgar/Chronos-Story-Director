@@ -778,6 +778,7 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     lore, rules, plan, facts, spoilers = get_full_context_data(profile_name)
     state = get_world_state(profile_name)
     content = read_file_content(profile_name, filename)
+    past_reactions = get_recent_faction_memory(profile_name, faction)
     
     # Content Sanitization
     if public_only:
@@ -816,6 +817,10 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     Character Data: {json.dumps(state.get('Allies', []))}
     Protagonist Status: {json.dumps(state.get('Protagonist Status', {}))}
     
+    *** VOICE & TONE REFERENCE (PREVIOUS REACTIONS) ***
+    Use these past logs to mimic the character's specific speech patterns, slang, and attitude:
+    {past_reactions}
+
     *** ESTABLISHED FACTS & LORE ***
     {facts}
     {lore[:2000]}
@@ -854,6 +859,8 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     
     if "REFUSAL" in res: return False, res
     
+    save_faction_reaction(profile_name, faction, res, filename)
+
     # Result Persistence
     paths = get_paths(profile_name)
     clean_style = format_style.split("->")[-1].strip()
@@ -863,6 +870,41 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
         f.write(header + res + "\n")
         
     return True, res
+
+def save_faction_reaction(profile_name, faction, text, scene_name):
+    """Logs a raw reaction to the database to preserve 'Voice' and 'Tone'."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=30)
+    c = conn.cursor()
+    c.execute("INSERT INTO faction_memory (faction_name, reaction_text, source_scene) VALUES (?, ?, ?)", 
+              (faction, text, scene_name))
+    conn.commit()
+    conn.close()
+
+def get_recent_faction_memory(profile_name, faction, limit=3):
+    """Retrieves the last few raw reactions to use as style references."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        c.execute("""
+            SELECT reaction_text, source_scene FROM faction_memory 
+            WHERE faction_name = ? 
+            ORDER BY id DESC LIMIT ?
+        """, (faction, limit))
+        rows = c.fetchall()
+    except sqlite3.OperationalError:
+        return "No memory bank found."
+    finally:
+        conn.close()
+    
+    if not rows:
+        return "No previous records found."
+    
+    history = ""
+    for r in rows:
+        history += f"--- FROM SCENE: {r[1]} ---\n{r[0][:800]}...\n\n" 
+    return history
 
 def run_war_room_simulation(profile_name, action_input):
     """
