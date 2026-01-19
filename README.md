@@ -19,7 +19,7 @@
 - **🎭 Identity Manager:** Handle aliases, secret identities, and changing narrative personas.
 
 <img width="1440" height="639" alt="image" src="https://github.com/user-attachments/assets/0f6f2f2b-c830-4db1-803c-623d9fff5a89" />
-<img width="1429" height="876" alt="image" src="https://github.com/user-attachments/assets/558919bf-f7d9-4334-ab6a-63371f304dcb" />
+<img width="1449" height="822" alt="image" src="https://github.com/user-attachments/assets/8f3c158c-bf9d-4001-b2cb-d18b0101e603" />
 <img width="1444" height="456" alt="image" src="https://github.com/user-attachments/assets/fc7e0151-1a0f-43d2-be98-c30b66a59d38" />
 <img width="1452" height="494" alt="image" src="https://github.com/user-attachments/assets/01f85c8f-5cf9-417d-8b2f-2aff4d14d551" />
 <img width="1436" height="845" alt="image" src="https://github.com/user-attachments/assets/999f8932-04ac-4c24-afba-ffe62ceece8a" />
