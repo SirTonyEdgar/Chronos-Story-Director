@@ -39,7 +39,10 @@ st.set_page_config(
 AVATAR_MANIFEST = {
     "Male": "https://img.icons8.com/plasticine/100/user.png",
     "Female": "https://img.icons8.com/plasticine/100/user-female.png",
-    "Neutral": "https://img.icons8.com/plasticine/100/test-account.png", 
+    "Neutral": "https://img.icons8.com/plasticine/100/test-account.png",
+    "Child": "https://img.icons8.com/?size=100&id=AVpzD6vFtDev&format=png&color=000000",
+    "Student": "https://img.icons8.com/?size=100&id=g34sfj4NMisg&format=png&color=000000",
+    "CEO": "https://img.icons8.com/?size=100&id=kSbhCMkEg8pf&format=png&color=000000",
     "King": "https://img.icons8.com/plasticine/100/crown.png",          
     "Queen": "https://img.icons8.com/plasticine/100/jewelry.png",      
     "Wizard": "https://img.icons8.com/plasticine/100/wizard.png",
@@ -51,12 +54,18 @@ RELATIONSHIP_ICONS = {
     "Ally": "https://img.icons8.com/plasticine/100/handshake.png",
     "Family": "https://img.icons8.com/plasticine/100/family.png",
     "Enemy": "https://img.icons8.com/plasticine/100/skull.png",
-    "Rival": "https://img.icons8.com/?size=100&id=zxQyGJlfB0DJ&format=png&color=000000",
+    "Rival": "https://img.icons8.com/?size=100&id=FUQb5zbnGl7l&format=png&color=000000",
     "Love": "https://img.icons8.com/plasticine/100/like--v1.png",
     "Mentor": "https://img.icons8.com/plasticine/100/wizard.png",
     "Vassal": "https://img.icons8.com/?size=100&id=MG9ci5zWEW89&format=png&color=000000",
     "Target": "https://img.icons8.com/plasticine/100/goal.png",
     "Resource": "https://img.icons8.com/plasticine/100/money-bag.png",
+    "Weapon": "https://img.icons8.com/?size=100&id=36688&format=png&color=000000",
+    "Technology": "https://img.icons8.com/?size=100&id=lSXsn9erua8J&format=png&color=000000",
+    "Finance": "https://img.icons8.com/?size=100&id=ifHQwCcjmWZJ&format=png&color=000000",
+    "Investment": "https://img.icons8.com/?size=100&id=XmSoADTK7BM9&format=png&color=000000",
+    "Contract": "https://img.icons8.com/?size=100&id=Y4lyJQODpHWN&format=png&color=000000",
+    "Security": "https://img.icons8.com/?size=100&id=9III381sJEY5&format=png&color=000000",
     "Unknown": "https://img.icons8.com/plasticine/100/question-mark.png"
 }
 
@@ -152,7 +161,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.3 - The Sequential Archive")
+    st.caption("v12.4 - Visual Index")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -419,10 +428,17 @@ elif page == "🕸️ Network Map":
             counter += 1
         existing_ids.add(node_id)
 
+        icon_key = asset.get("Icon", "Resource")
+        icon_url = FULL_ICON_MAP.get(icon_key, RELATIONSHIP_ICONS["Resource"])
+
         lx, ly = get_coords(current_idx, total, radius)
         current_idx += 1
         
-        nodes.append(Node(id=node_id, label=raw_name, size=25, shape="circularImage", image=RELATIONSHIP_ICONS["Resource"], font=font_style, x=lx, y=ly, fixed=True))
+        nodes.append(Node(
+            id=node_id, label=raw_name, size=25, shape="circularImage", 
+            image=icon_url,
+            font=font_style, x=lx, y=ly, fixed=True
+        ))
         edges.append(Edge(source="MAIN", target=node_id, label=asset.get("Type", "Resource"), color="#FFC107", font=edge_font))
 
     # Render
@@ -618,8 +634,21 @@ elif page == "📊 Status & Assets":
         assets_list = current_state.get("Assets", [])
         df_assets = pd.DataFrame(assets_list)
         if df_assets.empty:
-            df_assets = pd.DataFrame(columns=["Asset", "Type", "Status", "Value"])
+            df_assets = pd.DataFrame(columns=["Asset", "Type", "Status", "Value", "Icon"])
+
+        if "Icon" not in df_assets.columns:
+            df_assets["Icon"] = "Resource"
         
+        with st.expander("🖼️ Icon Reference"):
+            st.caption("Select an icon to represent this asset on the Network Map.")
+            cols = st.columns(9)
+            i = 0
+            for name, url in RELATIONSHIP_ICONS.items():
+                with cols[i % 9]:
+                    st.image(url, width=40)
+                    st.caption(name)
+                i += 1
+
         edited_assets_df = st.data_editor(
             df_assets,
             num_rows="dynamic",
@@ -628,7 +657,14 @@ elif page == "📊 Status & Assets":
                 "Asset": st.column_config.TextColumn("Asset Name", required=True),
                 "Type": st.column_config.TextColumn("Type", default="Financial"),
                 "Status": st.column_config.TextColumn("Status", default="Active"),
-                "Value": st.column_config.TextColumn("Value/Power", default="Unknown")
+                "Value": st.column_config.TextColumn("Value/Power", default="Unknown"),
+                "Icon": st.column_config.SelectboxColumn(
+                    "Map Icon",
+                    options=list(RELATIONSHIP_ICONS.keys()),
+                    required=True,
+                    default="Resource",
+                    help="Select an icon type for the map."
+                )
             },
             key="editor_assets"
         )

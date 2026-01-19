@@ -2,7 +2,7 @@
 
 **Chronos Story Director** is a sophisticated RAG-based storytelling engine designed to orchestrate LLMs (Gemini, GPT-4) for long-form narrative generation. It tracks world state, manages complex lore, and provides a "War Room" for strategic simulations.
 
-![Version](https://img.shields.io/badge/version-12.3-blue)
+![Version](https://img.shields.io/badge/version-12.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## ✨ Features
