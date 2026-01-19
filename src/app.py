@@ -64,7 +64,7 @@ RELATIONSHIP_ICONS = {
     "Technology": "https://img.icons8.com/?size=100&id=lSXsn9erua8J&format=png&color=000000",
     "Finance": "https://img.icons8.com/?size=100&id=ifHQwCcjmWZJ&format=png&color=000000",
     "Investment": "https://img.icons8.com/?size=100&id=XmSoADTK7BM9&format=png&color=000000",
-    "Contract": "https://img.icons8.com/?size=100&id=Y4lyJQODpHWN&format=png&color=000000",
+    "Information": "https://img.icons8.com/?size=100&id=Y4lyJQODpHWN&format=png&color=000000",
     "Security": "https://img.icons8.com/?size=100&id=9III381sJEY5&format=png&color=000000",
     "Unknown": "https://img.icons8.com/plasticine/100/question-mark.png"
 }
@@ -160,7 +160,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.7 - Manuscript Polishing & Editor Fixes")
+    st.caption("v12.8 - Project Tracker QoL Patch")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -194,7 +194,7 @@ if page == "🎬 Scene Creator":
                 def_year_hint = str(engine.get_world_state(profile).get("Current_Year", None))
                 year = st.number_input("Year", value=None, placeholder=def_year_hint, step=1, format="%d", key="sc_year")
             with c2: 
-                date_str = st.text_input("Date", placeholder="e.g. March 6th", key="sc_date")
+                date_str = st.text_input("Date", placeholder="e.g. March 6", key="sc_date")
             with c3: 
                 time_str = st.text_input("Time", placeholder="Auto-Detect If Left Empty", key="sc_time")
         else:
@@ -204,7 +204,7 @@ if page == "🎬 Scene Creator":
         # Briefing & Context
         all_files = ["Auto (Last 3 Scenes)"] + engine.get_all_files_list(profile)
         context_files = st.multiselect("Transition From:", all_files, default=[], key="sc_context")
-        brief = st.text_area("Scene Brief", height=150, key="sc_brief", placeholder="Describe the action...")
+        brief = st.text_area("Scene Brief", height=300, key="sc_brief", placeholder="Describe the action...")
         
         # Privacy Control (Fog of War)
         auto_privacy = st.checkbox("🕵️ Enable Fog of War (Auto-Tag Private Scenes)", value=False, help="If enabled, the AI will wrap private conversations in [[PRIVATE]] tags.")
