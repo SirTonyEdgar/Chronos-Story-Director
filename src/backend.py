@@ -279,6 +279,15 @@ def init_db(profile_name: str):
     conn.commit()
     conn.close()
 
+    # Faction Memory
+    c.execute('''CREATE TABLE IF NOT EXISTS faction_memory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        faction_name TEXT,
+        reaction_text TEXT,
+        source_scene TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )''')
+
 def update_story_setting(profile_name: str, key: str, value: str):
     """Upserts a global configuration setting."""
     paths = get_paths(profile_name)
