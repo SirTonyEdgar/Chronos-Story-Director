@@ -152,7 +152,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.0 - World Variables Update")
+    st.caption("v12.1 - Smart Age Tracking")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -490,26 +490,67 @@ elif page == "📊 Status & Assets":
         st.info("🎭 **Identity Management:** The AI uses 'True Identity' for memory, but writes the story using 'Current Name'.")
         
         c1, c2 = st.columns(2)
+        
+        # --- LEFT COLUMN: VISUALS & PERSONA ---
         with c1:
             st.subheader("📖 Narrative Persona")
             p_data["Name"] = st.text_input("Current Narrative Name", value=p_data.get("Name", "Unknown"), help="The name used in prose (e.g. 'Anthony walked...').")
             p_data["Aliases"] = st.text_area("Known Aliases / Nicknames", value=p_data.get("Aliases", ""), help="Comma-separated list (e.g. 'Tony, The Kid').", height=68)
             
-            # Icon Selector (Uses Global Manifest)
+            # Current Goal
+            p_data["Goal"] = st.text_area("Current Goal", value=p_data.get("Goal", ""), height=100, help="What is the character trying to achieve right now?")
+
+            # Icon Selector
             current_icon = p_data.get("Icon", "Male")
             if current_icon not in AVATAR_MANIFEST: current_icon = "Male"
             p_data["Icon"] = st.selectbox("Map Avatar", options=list(AVATAR_MANIFEST.keys()), index=list(AVATAR_MANIFEST.keys()).index(current_icon), key="p_avatar")
+            
+            # Avatar Preview
+            st.caption("Avatar Preview:")
+            st.image(AVATAR_MANIFEST[p_data["Icon"]], width=60)
 
+        # --- RIGHT COLUMN: DATA & TIME ---
         with c2:
             st.subheader("🧠 Deep Memory")
             true_name = st.text_input("True Identity (Context)", value=sys_settings.get('protagonist', ''), help="Original identity used for AI context grounding.")
-            p_data["Age"] = st.text_input("Age/Status", value=str(p_data.get("Age", "Unknown")))
-            p_data["Goal"] = st.text_area("Current Goal", value=p_data.get("Current Goal", ""), height=100)
+            
+            # --- Smart Age System ---
+            st.caption("⏳ Temporal Tracking")
+            
+            # 1. Choose Mode
+            default_mode = 0
+            if "Birth_Year" in p_data: default_mode = 1
+            
+            age_mode = st.selectbox(
+                "Tracking Mode", 
+                ["Static Status (Manual)", "Birth Year (Auto-Calc)"], 
+                index=default_mode,
+                help="Use 'Static' for fantasy/abstract ages. Use 'Birth Year' for strict timelines."
+            )
+            
+            if age_mode == "Birth Year (Auto-Calc)":
+                # A. World Clock (Global State)
+                curr_year = current_state.get("Current_Year", 2003) 
+                c_y_input = st.number_input("Current World Year", value=curr_year, step=1, help="The current year in your story.")
+                
+                # B. Birth Year
+                b_year_val = p_data.get("Birth_Year", 1984)
+                birth_year = st.number_input("Character Birth Year", value=b_year_val, step=1)
+                
+                # C. The Math
+                calc_age = c_y_input - birth_year
+                st.write(f"**Current Age:** {calc_age}")
+                
+                # Save Data
+                p_data["Age"] = str(calc_age)
+                p_data["Birth_Year"] = birth_year
+                current_state["Current_Year"] = c_y_input
+                
+            else:
+                # Manual Mode
+                p_data["Age"] = st.text_input("Age / Status", value=str(p_data.get("Age", "Unknown")), help="e.g. '25', 'Immortal', 'Cryo-Frozen'")
+                if "Birth_Year" in p_data: del p_data["Birth_Year"]
 
-        # Avatar Preview
-        st.caption("Avatar Preview:")
-        st.image(AVATAR_MANIFEST[p_data["Icon"]], width=60)
-        
         current_state["Protagonist Status"] = p_data
         
         if st.button("💾 Update Identity", type="primary"):
