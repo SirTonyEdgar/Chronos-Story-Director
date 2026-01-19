@@ -457,14 +457,30 @@ def analyze_state_changes(profile_name, scene_content):
        - Example: If they conquer a city, add "Conqueror of [City]".
        - Example: If they fix the economy, add "The Architect".
        - MERGE these into the existing 'Aliases' string in 'Protagonist Status' (comma-separated).
+
+    7. PROJECTS & RESEARCH:
+       - Review the 'Projects' list.
+       - If the narrative describes significant work, breakthroughs, or testing related to a project, INCREASE its "Progress" (0-100).
+       - Small effort: +5-10%. Major breakthrough: +20-50%. Completion: Set to 100%.
+       - If the project is ruined/destroyed, reduce progress.
     
-    OUTPUT: Return ONLY the updated JSON.
+    CRITICAL OUTPUT RULE: 
+    You must return the COMPLETE JSON STATE object, including all unchanged fields (Protagonist, Lore, etc.). 
+    DO NOT return a partial update. The output must be the full, valid JSON structure.
     """
     
     llm = get_llm(profile_name, "analysis") 
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content
-        return _extract_json(res)
+        new_state = _extract_json(res)
+        if new_state:
+            if "Protagonist Status" not in new_state:
+                state.update(new_state)
+                return state
+            else:
+                return new_state
+        return state
+
     except Exception as e: 
         print(f"Analysis Error: {e}")
         return state

@@ -133,15 +133,14 @@ with st.sidebar:
     st.divider()
     
     nav_options = [
-        "🎬 Scene Creator", 
-        "🚧 Projects", 
-        "⚔️ War Room", 
+        "🎬 Scene Creator",
+        "⚔️ War Room",
         "🕸️ Network Map",
-        "📊 Status & Assets", 
-        "📚 Compiler", 
-        "🗄️ Knowledge Base", 
-        "🗣️ Reaction Tool", 
-        "🧠 Co-Author Chat", 
+        "📊 World State Tracker",
+        "📚 Compiler",
+        "🗄️ Knowledge Base",
+        "🗣️ Reaction Tool",
+        "🧠 Co-Author Chat",
         "⚙️ Settings"
     ]
     page = st.radio("Navigation", nav_options, label_visibility="collapsed")
@@ -161,7 +160,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.4 - Visual Index")
+    st.caption("v12.5 - Unified State Management & Analysis Safeguards")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -466,7 +465,7 @@ elif page == "🕸️ Network Map":
 # ==========================================
 # MODULE: STATUS & ASSETS
 # ==========================================
-elif page == "📊 Status & Assets":
+elif page == "📊 World State Tracker":
     st.header("📊 World State Tracker")
     
     if 'dashboard_state' not in st.session_state:
@@ -501,8 +500,8 @@ elif page == "📊 Status & Assets":
     st.divider()
     st.subheader("🏰 Empire Dashboard")
     
-    tab_main, tab_allies, tab_assets, tab_skills, tab_vars, tab_raw = st.tabs(
-        ["👤 Protagonist", "🤝 Relations", "💰 Assets", "⚡ Skills", "🌐 Variables", "📝 JSON"]
+    tab_main, tab_projects, tab_allies, tab_assets, tab_skills, tab_vars, tab_raw = st.tabs(
+        ["👤 Protagonist", "🚧 Projects", "🤝 Relations", "💰 Assets", "⚡ Skills", "🌐 Variables", "📝 JSON"]
     )
     
     # --- TAB: PROTAGONIST IDENTITY ---
@@ -585,6 +584,55 @@ elif page == "📊 Status & Assets":
             engine.update_story_setting(profile, 'protagonist', true_name)
             st.toast("Identity Updated.", icon="✅")
             st.rerun()
+
+    # --- TAB: PROJECTS ---
+    with tab_projects:
+        projects = current_state.get("Projects", [])
+        
+        # New Project Creator
+        with st.expander("🚀 Launch New Project", expanded=False):
+            with st.form("new_proj_form"):
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    n_name = st.text_input("Project Name", placeholder="e.g. Kernel Logic")
+                with c2:
+                    n_desc = st.text_input("Objective", placeholder="e.g. Create predictive RAM algorithm")
+                n_specs = st.text_area("Initial Specifications", height=100)
+                if st.form_submit_button("Initialize Project"):
+                    engine.add_project(profile, n_name, n_desc, n_specs)
+                    st.rerun()
+
+        st.divider()
+
+        # Active Projects Tracker
+        if not projects: 
+            st.info("No active projects. Start one above.")
+        else:
+            for i, proj in enumerate(projects):
+                st.markdown(f"**{proj['Name']}**")
+                st.progress(proj['Progress'] / 100)
+                
+                with st.expander(f"Manage: {proj['Name']} ({proj['Progress']}%)"):
+                    st.write(f"**Goal:** {proj['Description']}")
+                    
+                    new_specs = st.text_area(f"Technical Specs", value=proj['Features_Specs'], key=f"spec_{i}", height=100)
+
+                    new_prog = st.slider("Progress Override", 0, 100, proj['Progress'], key=f"prog_{i}")
+                    
+                    c_up, c_arc = st.columns([1, 1])
+                    if c_up.button("Update Status", key=f"upd_{i}"):
+                        engine.update_project(profile, i, new_prog, new_specs)
+                        st.success("Project Updated")
+                        st.rerun()
+
+                    with c_arc.popover("✅ Complete Project"):
+                        st.caption("This will archive the project and add it to 'Facts' as finished technology.")
+                        final_hist = st.text_area("Final Historical Record", value=f"Completed. Final Specs: {new_specs}", height=100)
+                        if st.button("Confirm Completion", key=f"fin_{i}"):
+                            success, msg = engine.complete_project(profile, i, final_hist)
+                            if success:
+                                st.balloons()
+                                st.rerun()
 
     # --- TAB: RELATIONS ---
     with tab_allies:
