@@ -498,7 +498,7 @@ elif page == "📊 World State Tracker":
                         st.rerun()
 
     st.divider()
-    st.subheader("🏰 Empire Dashboard")
+    st.subheader("🏰 Tracker Dashboard")
     
     tab_main, tab_projects, tab_allies, tab_assets, tab_skills, tab_vars, tab_raw = st.tabs(
         ["👤 Protagonist", "🚧 Projects", "🤝 Relations", "💰 Assets", "⚡ Skills", "🌐 Variables", "📝 JSON"]
@@ -609,6 +609,7 @@ elif page == "📊 World State Tracker":
             st.info("No active projects. Start one above.")
         else:
             for i, proj in enumerate(projects):
+                prog_val = proj.get('Progress', 0)
                 st.markdown(f"**{proj['Name']}**")
                 st.progress(proj['Progress'] / 100)
                 
