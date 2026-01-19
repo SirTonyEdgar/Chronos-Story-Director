@@ -50,7 +50,8 @@ class StoryState(TypedDict):
     State schema for the scene generation workflow.
     Tracks context, configuration, and generation artifacts across graph nodes.
     """
-    profile_name: str 
+    profile_name: str
+    chapter_num: int
     year: int
     date_str: str
     time_str: str 
@@ -101,6 +102,22 @@ def _extract_json(text: str) -> Dict:
             except json.JSONDecodeError:
                 pass
     return {}
+
+def get_next_chapter_number(profile_name: str) -> int:
+    """Scans existing files to find the next available chapter number."""
+    paths = get_paths(profile_name)
+    files = glob.glob(os.path.join(paths['output'], "*.txt"))
+    max_ch = 0
+    for f in files:
+        base = os.path.basename(f)
+        # Regex to find 'Ch01' or 'Chapter_1'
+        match = re.search(r'Ch(?:apter)?_?(\d+)', base, re.IGNORECASE)
+        if match:
+            try:
+                num = int(match.group(1))
+                if num > max_ch: max_ch = num
+            except: pass
+    return max_ch + 1
 
 class MockResponse:
     """Simulation of an LLM response object for fallback scenarios."""
@@ -515,6 +532,7 @@ def draft_scene(state: StoryState):
     prompt = f"""
     ROLE: Novelist (Third Person Limited).
     CHARACTER: {settings['protagonist']}.
+    CHAPTER: {state['chapter_num']}
     
     *** WORLD LAWS & MECHANICS (STRICT) ***
     {rules}
@@ -583,7 +601,7 @@ def auto_generate_title(profile_name, draft_text, brief):
     llm = get_llm(profile_name, "chat")
     return llm.invoke([HumanMessage(content=prompt)]).content.strip()
 
-def generate_scene(profile_name, year, date_str, time_str, title, brief, context_files_list=None, use_fog_of_war=False):
+def generate_scene(profile_name, chapter_num, year, date_str, time_str, title, brief, context_files_list=None, use_fog_of_war=False):
     """
     Entry point for the scene generation pipeline.
     Initializes the state graph, aggregates context, and executes the workflow.
@@ -630,6 +648,7 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
 
     initial_input = {
         "profile_name": profile_name,
+        "chapter_num": chapter_num,
         "year": final_year,
         "date_str": final_date,
         "time_str": final_time,
@@ -653,24 +672,34 @@ def generate_scene(profile_name, year, date_str, time_str, title, brief, context
 
     # OUTPUT PERSISTENCE
     safe_title = re.sub(r'[\\/*?:"<>|]', "", final_title).replace(" ", "_")
+
+    # Format: Ch01_1984-03-05_The_Title.txt
+    prefix = f"Ch{int(chapter_num):02d}"
     
     if use_time:
         safe_date = final_date.replace(" ", "-")
-        filename = f"{final_year}-{safe_date}_{safe_title}.txt"
+        filename = f"{prefix}_{final_year}-{safe_date}_{safe_title}.txt"
     else:
         filename = f"{safe_title}.txt"
     
     paths = get_paths(profile_name)
     filepath = os.path.join(paths['output'], filename)
     
+    # FALLBACK LOGIC: If the user left Chapter or Year empty (None), use the hints
+    if chapter_num is None:
+        chapter_num = get_next_chapter_number(profile_name)
+    
+    if year is None:
+        year = get_world_state(profile_name).get("Current_Year", None)
+
     # Collision Avoidance
     counter = 1
     while os.path.exists(filepath):
         # Handle duplicates for both formats
         if use_time:
-            filename = f"{final_year}-{safe_date}_{safe_title}_{counter}.txt"
+            filename = f"{prefix}_{final_year}-{safe_date}_{safe_title}_{counter}.txt"
         else:
-            filename = f"{safe_title}_{counter}.txt"
+            filename = f"{prefix}_{safe_title}_{counter}.txt"
             
         filepath = os.path.join(paths['output'], filename)
         counter += 1
@@ -732,14 +761,16 @@ def run_chat_query(profile_name, user_input):
     llm = get_llm(profile_name, "chat")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
-def generate_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard"):
+def generate_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard", custom_instructions=""):
     """
     Simulates a faction's reaction to a scene.
     Supports 'Fog of War' (redacting private content) and custom formatting styles.
     """
+    lore, rules, plan, facts, spoilers = get_full_context_data(profile_name)
+    state = get_world_state(profile_name)
     content = read_file_content(profile_name, filename)
     
-    # 1. Content Sanitization (Privacy Filter)
+    # Content Sanitization (Privacy Filter)
     if public_only:
         # Redact multi-line private blocks
         pattern = r"\[\[PRIVATE\]\].*?\[\[/PRIVATE\]\]"
@@ -748,7 +779,7 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
         # Redact inline private tags
         content = re.sub(r"\[PRIVATE:.*?\]", "[REDACTED]", content)
 
-    # 2. Context Instruction Layer
+    # Context Instruction Layer
     knowledge_instr = "You have full knowledge of the scene, including internal thoughts."
     if public_only:
         knowledge_instr = (
@@ -759,14 +790,30 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
             "Do NOT guess the redacted content accurately. Speculate wildly or ignore it."
         )
 
-    # 3. Prompt Construction
+    # Prompt Construction
     prompt = f"""
-    ROLE: Narrative Simulator.
+    ROLE: Narrative Simulator (Grounded in History & State).
     TARGET FACTION: {faction}
     
+    *** WORLD STATE (FOR CONSISTENCY) ***
+    Current Year: {state.get('Current_Year', 'Unknown')}
+    Character Data: {json.dumps(state.get('Allies', []))}
+    Protagonist Status: {json.dumps(state.get('Protagonist Status', {}))}
+    
+    *** ESTABLISHED FACTS & LORE ***
+    {facts}
+    {lore[:2000]}
+
     *** MISSION ***
     Write a reaction to the SCENE provided below from the perspective of the Target Faction.
     
+    CRITICAL CONSISTENCY RULES:
+    1. AGE CHECK: Check 'Allies' or 'Protagonist' data for ages. If a character is a child (e.g., 7 or 10), they MUST use age-appropriate vocabulary and behavior.
+    2. MEMORY ESCALATION: Review the 'Allies' notes. If this faction has reacted before, this new reaction should build on or escalate their previous opinion.
+
+    *** ADDITIONAL USER INSTRUCTIONS ***
+    {custom_instructions if custom_instructions else "Follow standard personality and lore for this faction."}
+
     *** FORMATTING & TONE ***
     The output must strictly follow this format/medium: 
     "{format_style}"
@@ -785,11 +832,10 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     
     if "REFUSAL" in res: return False, res
     
-    # 4. Result Persistence
+    # Result Persistence
     paths = get_paths(profile_name)
-    timestamp = " (Public)" if public_only else " (Omniscient)"
     clean_style = format_style.split("->")[-1].strip()
-    header = f"\n\n>>> REACTION: {faction} | {clean_style}{timestamp} <<<\n"
+    header = f"\n\n>>> REACTION: {faction} | {clean_style} <<<\n"
     
     with open(os.path.join(paths['output'], filename), "a", encoding="utf-8") as f:
         f.write(header + res + "\n")

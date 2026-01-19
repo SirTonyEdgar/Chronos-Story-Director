@@ -152,7 +152,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.2 - Backend Brain Surgery")
+    st.caption("v12.3 - The Sequential Archive")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -162,43 +162,52 @@ if page == "🎬 Scene Creator":
     tab_write, tab_read, tab_edit, tab_manage = st.tabs(["✍️ Write", "📖 Read", "✏️ Edit", "🗑️ Manage"])
     
     with tab_write:
-        # Load constraints
+        # Load constraints and current state
         settings = engine.get_story_settings(profile)
         use_time = settings.get('use_time_system', 'true').lower() == 'true'
+        current_state = engine.get_world_state(profile)
 
-        year = 0
-        date_str = ""
-        time_str = ""
+        # --- Auto-Detect Next Chapter ---
+        next_ch = engine.get_next_chapter_number(profile)
+
+        # Layout: Chapter | Title
+        next_ch_hint = str(engine.get_next_chapter_number(profile))
+
+        c_meta1, c_meta2 = st.columns([1, 4])
+        with c_meta1:
+            chapter_num = st.number_input("Chapter", min_value=1, value=None, placeholder=next_ch_hint, step=1, help="Used for file sorting (e.g. Ch01).")
+        with c_meta2:
+            title = st.text_input("Scene Title", placeholder="Optional (Auto-Generate if Empty)", key="sc_title")
 
         # Time System Controls
         if use_time:
             c1, c2, c3 = st.columns([1, 1, 1])
-            with c1: 
-                year = st.number_input("Year", value=None, step=1, placeholder="1984", format="%d", key="sc_year")
+            with c1:
+                def_year_hint = str(engine.get_world_state(profile).get("Current_Year", None))
+                year = st.number_input("Year", value=None, placeholder=def_year_hint, step=1, format="%d", key="sc_year")
             with c2: 
                 date_str = st.text_input("Date", placeholder="e.g. March 6th", key="sc_date")
             with c3: 
                 time_str = st.text_input("Time", placeholder="Auto-Detect If Left Empty", key="sc_time")
         else:
+            year, date_str, time_str = 0, "", ""
             st.caption("⏳ Time System is Disabled.")
 
-        # Briefing Inputs
-        title = st.text_input("Scene Title", placeholder="Optional (Auto-Generate if Empty)", key="sc_title")
-        
+        # Briefing & Context
         all_files = ["Auto (Last 3 Scenes)"] + engine.get_all_files_list(profile)
         context_files = st.multiselect("Transition From:", all_files, default=[], key="sc_context")
         brief = st.text_area("Scene Brief", height=150, key="sc_brief", placeholder="Describe the action...")
         
         # Privacy Control (Fog of War)
-        auto_privacy = st.checkbox("🕵️ Enable Fog of War (Auto-Tag Private Scenes)", value=False, help="If enabled, the AI will wrap private conversations in [[PRIVATE]] tags. Required for the Reaction Tool's 'Public Knowledge' mode.")
+        auto_privacy = st.checkbox("🕵️ Enable Fog of War (Auto-Tag Private Scenes)", value=False, help="If enabled, the AI will wrap private conversations in [[PRIVATE]] tags.")
 
         if st.button("Generate Scene", type="primary", use_container_width=True, key="btn_gen_scene"):
             if not brief: 
                 st.error("Scene Brief is required.")
             else:
-                with st.spinner("Drafting Narrative..."):
+                with st.spinner(f"Drafting Chapter {chapter_num}..."):
                     text, path = engine.generate_scene(
-                        profile, year, date_str, time_str, title, brief, 
+                        profile, chapter_num, year, date_str, time_str, title, brief,
                         context_files, use_fog_of_war=auto_privacy
                     )
                     st.success(f"Draft Saved: {os.path.basename(path)}")
@@ -546,7 +555,7 @@ elif page == "📊 Status & Assets":
                     p_data["Birth_Year"] = birth_year
                     current_state["Current_Year"] = c_y_input
                 else:
-                    st.caption("Enter years to calculate age.")
+                    st.info("Pending Data: Enter years manually or run AI Analysis to calculate age.")
                 
             else:
                 # Manual Mode
@@ -854,6 +863,21 @@ elif page == "🗣️ Reaction Tool":
     
     # Template Library for Sub-Options
     REACTION_TEMPLATES = {
+        "👤 Individual Perspective": [
+            "Internal Monologue / Private Thoughts",
+            "Personal Diary / Journal Entry",
+            "Direct Speech / Live Reaction",
+            "Formal Report / Debrief",
+            "Private Letter / Correspondence"
+        ],
+        "🕵️ Private Discussion": [
+            "Boardroom Meeting / Secret Summit",
+            "Private Conversation",
+            "Secured Radio / Comms Chatter",
+            "Safehouse Briefing",
+            "Encrypted Group Chat",
+            "Private Group Chat"
+        ],
         "🌐 Modern Internet": [
             "Anonymous Imageboard (e.g. 4chan)",
             "Social Media Feed (e.g. Twitter/X)",
@@ -895,7 +919,7 @@ elif page == "🗣️ Reaction Tool":
         # Format Selection
         c3, c4 = st.columns([1, 1])
         with c3:
-            selected_category = st.selectbox("Era / Tech Level", list(REACTION_TEMPLATES.keys()))
+            selected_category = st.selectbox("Perspective / Era", list(REACTION_TEMPLATES.keys()))
         
         with c4:
             available_formats = REACTION_TEMPLATES[selected_category]
@@ -905,6 +929,13 @@ elif page == "🗣️ Reaction Tool":
         final_style_instruction = selected_format
         if selected_format == "Manual Input":
             final_style_instruction = st.text_input("Describe Custom Format:", placeholder="e.g. Telepathic dream sequence")
+
+        # --- Additional Prompt / Specific Instructions ---
+        extra_prompt = st.text_area(
+            "Additional Instructions (Optional)", 
+            placeholder="e.g. Make them sounds extremely skeptical, or focus on their fear of the protagonist.",
+            help="Further guide the AI's tone or focus for this specific reaction."
+        )
 
         # Fog of War Control
         st.caption("---")
@@ -922,7 +953,8 @@ elif page == "🗣️ Reaction Tool":
                     success, res = engine.generate_reaction_for_scene(
                         profile, target_scene, target_faction, 
                         public_only=is_public, 
-                        format_style=full_style_prompt
+                        format_style=full_style_prompt,
+                        custom_instructions=extra_prompt
                     )
                     
                     if success: 
