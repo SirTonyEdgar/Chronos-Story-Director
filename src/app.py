@@ -127,7 +127,7 @@ with st.sidebar:
         "🎬 Scene Creator", 
         "🚧 Projects", 
         "⚔️ War Room", 
-        "🕸️ Network Map",  # Dedicated Page
+        "🕸️ Network Map",
         "📊 Status & Assets", 
         "📚 Compiler", 
         "🗄️ Knowledge Base", 
@@ -152,7 +152,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v12.1 - Smart Age Tracking")
+    st.caption("v12.2 - Backend Brain Surgery")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -456,19 +456,20 @@ elif page == "📊 Status & Assets":
     
     # --- AI ANALYSIS TOOLS ---
     with st.expander("🤖 AI Batch Analysis Tools", expanded=False):
-        st.caption("Select scenes to let AI auto-extract changes to allies, assets, and skills.")
-        paths = engine.get_paths(profile)
-        scene_files = [os.path.basename(f) for f in glob.glob(os.path.join(paths['output'], "*.txt"))]
-        scene_files.sort(key=lambda x: os.path.getmtime(os.path.join(paths['output'], x)), reverse=True)
+        st.caption("Select Scenes, Lore, or Plans to auto-extract data (Dates, Allies, Assets).")
         
-        if scene_files:
-            target_scenes = st.multiselect("Select Scenes:", scene_files, default=[])
+        all_readable_files = engine.get_all_files_list(profile)
+        
+        if all_readable_files:
+            target_scenes = st.multiselect("Select Content to Analyze:", all_readable_files, default=[])
+            
             if st.button("Analyze & Update State", width="stretch"):
                 if target_scenes:
-                    with st.spinner("Processing Context..."):
+                    with st.spinner("Processing Context & Extracting Data..."):
                         combined = ""
                         for fname in target_scenes:
                             combined += f"\n=== {fname} ===\n{engine.read_file_content(profile, fname)}\n"
+                        
                         st.session_state['temp_state'] = engine.analyze_state_changes(profile, combined)
                         st.rerun()
 
@@ -500,7 +501,7 @@ elif page == "📊 Status & Assets":
             # Current Goal
             p_data["Goal"] = st.text_area("Current Goal", value=p_data.get("Goal", ""), height=100, help="What is the character trying to achieve right now?")
 
-            # Icon Selector
+            # Protagonist Icon Selector
             current_icon = p_data.get("Icon", "Male")
             if current_icon not in AVATAR_MANIFEST: current_icon = "Male"
             p_data["Icon"] = st.selectbox("Map Avatar", options=list(AVATAR_MANIFEST.keys()), index=list(AVATAR_MANIFEST.keys()).index(current_icon), key="p_avatar")
@@ -517,7 +518,7 @@ elif page == "📊 Status & Assets":
             # --- Smart Age System ---
             st.caption("⏳ Temporal Tracking")
             
-            # 1. Choose Mode
+            # Choose Mode
             default_mode = 0
             if "Birth_Year" in p_data: default_mode = 1
             
@@ -530,21 +531,22 @@ elif page == "📊 Status & Assets":
             
             if age_mode == "Birth Year (Auto-Calc)":
                 # A. World Clock (Global State)
-                curr_year = current_state.get("Current_Year", 2003) 
+                curr_year = current_state.get("Current_Year", None) 
                 c_y_input = st.number_input("Current World Year", value=curr_year, step=1, help="The current year in your story.")
                 
                 # B. Birth Year
-                b_year_val = p_data.get("Birth_Year", 1984)
+                b_year_val = p_data.get("Birth_Year", None)
                 birth_year = st.number_input("Character Birth Year", value=b_year_val, step=1)
                 
-                # C. The Math
-                calc_age = c_y_input - birth_year
-                st.write(f"**Current Age:** {calc_age}")
-                
-                # Save Data
-                p_data["Age"] = str(calc_age)
-                p_data["Birth_Year"] = birth_year
-                current_state["Current_Year"] = c_y_input
+                # C. The Math (Safety Check)
+                if c_y_input is not None and birth_year is not None:
+                    calc_age = c_y_input - birth_year
+                    st.write(f"**Current Age:** {calc_age}")
+                    p_data["Age"] = str(calc_age)
+                    p_data["Birth_Year"] = birth_year
+                    current_state["Current_Year"] = c_y_input
+                else:
+                    st.caption("Enter years to calculate age.")
                 
             else:
                 # Manual Mode

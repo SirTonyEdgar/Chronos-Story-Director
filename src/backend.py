@@ -404,7 +404,7 @@ def analyze_state_changes(profile_name, scene_content):
     prompt = f"""
     ROLE: World State Database Manager.
     
-    TASK: Analyze the narrative SCENE and update the JSON STATE to reflect changes.
+    TASK: Analyze the TEXT CONTENT (Scene, Lore, or Plan) and update the JSON STATE.
     
     *** CURRENT STATE ***
     {json.dumps(state)}
@@ -413,19 +413,33 @@ def analyze_state_changes(profile_name, scene_content):
     {scene_content}
     
     *** UPDATE INSTRUCTIONS ***
-    1. ALLIES: Update Loyalty (0-100) or Status if changed. Add new major characters.
-    2. ASSETS: Add new resources/locations gained. Mark lost assets as "Destroyed".
-    3. SKILLS: Add new skills learned.
-    4. ALIASES & REPUTATION:
-       - Look for new titles, nicknames, or reputations bestowed upon the protagonist by the public or other characters.
-       - Example: If they conquer a city, add "Conqueror of [City]".
-       - Example: If they fix the economy, add "The Architect".
-       - MERGE these into the existing 'Aliases' string in 'Protagonist Status' (comma-separated).
-    5. WORLD VARIABLES (CRITICAL):
+    1. TIME & DATES (CRITICAL EXECUTION):
+       - Compare any detected years against the 'Current_Year' ({state.get('Current_Year', 'Unknown')}).
+       - RULE A: "NARRATIVE ONLY": ONLY update 'Current_Year' if the NARRATIVE VOICE confirms the story has actually reached that time.
+         * YES: "The year 2030 finally arrived..." (Update to 2030)
+         * YES: "Ten years passed..." (Add 10 years)
+         * NO: Dialogue references (e.g. "I will be done in 2038") -> IGNORE.
+         * NO: Future Plans/Visions (e.g. "He foresaw the crash of 2029") -> IGNORE.
+       - RULE B: "FORWARD ONLY": Never update to a year older than Current_Year (Flashback protection).
+       - RULE C: BIRTH YEAR: If explicitly mentioned as a fact (e.g. "Born in 1984"), update 'Protagonist Status' -> 'Birth_Year'.
+
+    2. WORLD VARIABLES (CRITICAL):
        - Review the 'World Variables' list in the State.
        - Based on the scene's events, strictly Apply the "Mechanic/Rule" defined for each variable.
        - Example: If 'Federal Heat' rule says "violence increases this", and scene has violence, increase the Value.
        - Output the UPDATED list of variables.
+
+    3. ALLIES: Update Loyalty (0-100) or Status if changed. Add new major characters.
+
+    4. ASSETS: Add new resources/locations gained. Mark lost assets as "Destroyed".
+
+    5. SKILLS: Add new skills learned.
+
+    6. ALIASES & REPUTATION:
+       - Look for new titles, nicknames, or reputations bestowed upon the protagonist by the public or other characters.
+       - Example: If they conquer a city, add "Conqueror of [City]".
+       - Example: If they fix the economy, add "The Architect".
+       - MERGE these into the existing 'Aliases' string in 'Protagonist Status' (comma-separated).
     
     OUTPUT: Return ONLY the updated JSON.
     """
