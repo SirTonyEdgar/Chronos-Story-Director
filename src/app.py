@@ -169,7 +169,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v14.0 - Smart Retrieval")
+    st.caption("v14.1 - Smart Retrieval")
 
 # ==========================================
 # MODULE: SCENE CREATOR

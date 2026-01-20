@@ -835,27 +835,56 @@ def infer_header_data(brief, prev_context, settings, profile_name):
         return {}
 
 def run_chat_query(profile_name, user_input):
-    """Interacts with the Co-Author persona, aware of full narrative context."""
-    lore, rules, plan, facts, spoilers = get_full_context_data(profile_name)
+    """
+    Interacts with the Co-Author persona (v14.0 Smart Retrieval).
+    
+    Upgrade: Uses the Librarian to find specific Lore/Facts related to the 
+    user's question instead of dumping the whole database.
+    """
+    # Retrieve Global Context (Rules & Plans are always relevant)
+    rules, plan, _ = get_global_context(profile_name)
     state = get_world_state(profile_name)
 
+    # Get Recent Narrative
     recent_scenes = get_last_scenes(profile_name)
     
+    # Smart Retrieval
+    print(f"  [Co-Author] Researching: '{user_input[:50]}...'")
+    relevant_ids = smart_retrieval.get_relevant_fragment_ids(
+        profile_name, 
+        user_query=user_input, 
+        doc_types=["Lore", "Fact", "Rulebook"]
+    )
+
+    smart_knowledge = get_content_by_ids(profile_name, relevant_ids)
+    if not smart_knowledge:
+        smart_knowledge = "No specific database records found for this query."
+    
+    # Construct Prompt
     prompt = f"""
-    ROLE: Co-Author. 
+    ROLE: Co-Author & Lorekeeper.
     
-    *** STORY BIBLE ***
-    LORE: {lore}
-    RULES: {rules}
-    ESTABLISHED FACTS: {facts}
-    FUTURE PLANS: {plan[:3000]}
+    *** STORY BIBLE (SMART RETRIEVAL) ***
+    {smart_knowledge}
     
-    *** CURRENT STATUS ***
-    WORLD STATE: {state}
-    RECENT NARRATIVE: {recent_scenes}
+    *** WORLD RULES & PHYSICS ***
+    {rules}
+    
+    *** FUTURE PLANS ***
+    {plan[:3000]}
+    
+    *** CURRENT WORLD STATE ***
+    {json.dumps(state)}
+    
+    *** RECENT NARRATIVE EVENTS ***
+    {recent_scenes}
     
     *** USER QUERY ***
-    {user_input}
+    "{user_input}"
+    
+    *** INSTRUCTION ***
+    Answer the user's question based strictly on the provided Context and Lore.
+    If the answer is not in the context, say "I don't have that specific record loaded," or propose a creative solution consistent with the World Rules.
     """
     
     llm = get_llm(profile_name, "chat")
@@ -998,12 +1027,31 @@ def get_recent_faction_memory(profile_name, faction, limit=3):
 
 def run_war_room_simulation(profile_name, action_input):
     """
-    Executes a Monte Carlo strategic simulation for a proposed action.
-    Returns a structured risk/reward analysis report.
+    Executes a Monte Carlo strategic simulation (v14.0 Smart Retrieval).
+    
+    Upgrade: Now uses the 'Librarian' to find specific historical precedents, 
+    enemy capabilities (Lore), and reads recent scenes to understand the 
+    immediate tactical situation.
     """
-    lore, rules, plan, facts, spoilers = get_full_context_data(profile_name)
+    # Retrieve Global Rules & Plan
+    rules, plan, _ = get_global_context(profile_name)
     state = get_world_state(profile_name)
     
+    # Get Immediate Tactical Context
+    recent_history = get_last_scenes(profile_name)
+    
+    # Smart Retrieval (Strategic Intelligence)
+    print(f"  [War Room] Gathering Intelligence for: '{action_input[:50]}...'")
+    relevant_ids = smart_retrieval.get_relevant_fragment_ids(
+        profile_name, 
+        user_query=f"Strategic analysis of: {action_input}", 
+        doc_types=["Lore", "Fact", "Rulebook"]
+    )
+    smart_intel = get_content_by_ids(profile_name, relevant_ids)
+    if not smart_intel:
+        smart_intel = "No specific intelligence dossiers found."
+
+    # Construct the Dossier
     intel_packet = f"""
     *** CURRENT EMPIRE STATE ***
     Protagonist Status: {json.dumps(state.get('Protagonist Status', {}))}
@@ -1011,21 +1059,24 @@ def run_war_room_simulation(profile_name, action_input):
     Available Assets: {json.dumps(state.get('Assets', []))}
     Current Skills: {json.dumps(state.get('Skills', []))}
     
-    *** ESTABLISHED FACTS ***
-    {facts}
+    *** TACTICAL SITUATION (RECENT EVENTS) ***
+    {recent_history[-4000:]} 
+    
+    *** RELEVANT INTELLIGENCE (LORE/FACTS) ***
+    {smart_intel}
     """
     
     prompt = f"""
     ROLE: Strategic Simulation Engine.
     
-    *** WORLD RULES & CONSTRAINTS ***
+    *** WORLD RULES & PHYSICS ***
     {rules}
     
     *** INTELLIGENCE PACKET ***
     {intel_packet}
     
-    *** LORE CONTEXT ***
-    {lore[:3000]} 
+    *** STRATEGIC GOAL / PLAN ***
+    {plan[:2000]}
     
     *** PROPOSED ACTION ***
     "{action_input}"
@@ -1052,7 +1103,7 @@ def run_war_room_simulation(profile_name, action_input):
     ### 4. Verdict
     [Go / No-Go recommendation]
     """
-    
+
     llm = get_llm(profile_name, "analysis")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
