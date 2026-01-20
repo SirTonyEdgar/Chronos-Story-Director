@@ -158,7 +158,7 @@ def backfill_reactions(profile_name: str):
 def main():
     while True:
         print("\n========================================")
-        print("   CHRONOS DATA MANAGER (v13.2)")
+        print("   CHRONOS DATA MANAGER   ")
         print("========================================")
         
         profiles = engine.list_profiles()

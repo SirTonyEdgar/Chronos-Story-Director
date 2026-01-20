@@ -556,12 +556,7 @@ def analyze_state_changes(profile_name, scene_content):
 
 def draft_scene(state: StoryState):
     """
-    Workflow Node 1: Narrative Drafting (v14.0 Smart Retrieval).
-    
-    Instead of dumping the entire database into the context, this node:
-    1. Fetches Global Context (Rules, Plans).
-    2. Consults the 'Librarian' (Smart Retrieval) to identify relevant Lore & Facts based on the Scene Brief.
-    3. Ingests only the specific documents needed for this exact scene.
+    Workflow Node 1: Narrative Drafting (Adaptive Realism).
     """
     profile = state['profile_name']
     brief = state['scene_brief']
@@ -576,10 +571,9 @@ def draft_scene(state: StoryState):
     relevant_ids = smart_retrieval.get_relevant_fragment_ids(
         profile, 
         user_query=brief, 
-        doc_types=["Lore", "Fact"]
+        doc_types=["Lore", "Fact", "Rulebook"]
     )
     
-    # Fetch the actual content for the selected IDs
     smart_context_str = get_content_by_ids(profile, relevant_ids)
     if not smart_context_str:
         smart_context_str = "No specific historical records found for this scene."
@@ -588,15 +582,17 @@ def draft_scene(state: StoryState):
     dynamic_spoilers = extract_dynamic_spoilers(plan, state['year'], profile, settings=settings) 
     all_banned = list(set(db_spoilers + dynamic_spoilers))
     
-    # Header Generation (Date/Time)
+    # Header & Era Detection
     use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
     header = ""
-    if use_time_system:
-        header = f"{state['date_str']}, {state['year']}"
-        if state['time_str']: 
-            header += f"\n{state['time_str']}"
+    era_display = "Undefined (Infer Tech Level from Lore)"
     
-    # Multiverse/Timeline Logic
+    if use_time_system and state['year'] > 0:
+        header = f"{state['date_str']}, {state['year']}"
+        era_display = f"{state['year']}"
+        if state['time_str']: header += f"\n{state['time_str']}"
+
+    # Timeline Logic
     timeline_section = ""
     if settings.get('use_timelines', 'true').lower() == 'true':
         timelines_list = state_tracking.get("Timelines", [])
@@ -605,44 +601,59 @@ def draft_scene(state: StoryState):
             for t in timelines_list:
                 timeline_section += f"- {t.get('Name', 'Unknown')}: {t.get('Description', '')}\n"
     
-    # World Variables Logic
+    # World Variables
     variables_section = ""
     world_vars = state_tracking.get("World Variables", [])
     if world_vars:
-        variables_section = "*** WORLD MECHANICS & VARIABLES (STRICT ADHERENCE) ***\n"
+        variables_section = "*** WORLD MECHANICS (STRICT) ***\n"
         for v in world_vars:
             variables_section += f"- {v.get('Name', 'Var')}: {v.get('Value', '0')} (RULE: {v.get('Mechanic', '')})\n"
 
-    # Privacy Protocol (Fog of War)
+    # Privacy Protocol
     privacy_protocol = ""
     if state.get('use_fog_of_war', False):
         privacy_protocol = """
-        *** PRIVACY & FOG OF WAR PROTOCOL (CRITICAL) ***
-        You are responsible for marking "Secret Information" for the simulation engine.
-        RULE: Whenever characters are in a location/context where the GENERAL PUBLIC cannot see/hear them 
-        (e.g., private homes, whispered conversations, internal monologue, a moving car, a secure bunker, a whispered conversation, or internal monologue), wrap that section in [[PRIVATE]] ... [[/PRIVATE]] tags.
+        *** PRIVACY & FOG OF WAR PROTOCOL ***
+        RULE: Wrap private interactions (whispers, internal thoughts, secure rooms) in [[PRIVATE]] ... [[/PRIVATE]] tags.
         EXAMPLE:
-        The two men walked through the park. "Nice day," JFK said.
+        They stood in the public square. "Everything is fine," he announced loudly.
         [[PRIVATE]]
-        Inside the car, the smile dropped. "We have a problem," he whispered.
+        Once inside the secure room, he slumped against the door. "We are doomed," he whispered.
         [[/PRIVATE]]
         """
 
-    # Construct Final Prompt
+    # Construct Final Prompt (ADAPTIVE REALISM)
     prompt = f"""
     ROLE: Novelist (Third Person Limited).
     CHARACTER: {settings['protagonist']}.
     CHAPTER: {state['chapter_num']}
+    CURRENT CALENDAR YEAR: {era_display}
     
+    *** NARRATIVE LOGIC & TECH-LEVEL (HIERARCHY OF TRUTH) ***
+    1. LORE PRIORITY (ABSOLUTE):
+       - The 'Story Bible' and 'Rules' are the primary source.
+       - If Lore says "Year 407" features Flying Airships, then Airships exist.
+       - Do NOT assume "Year 407" means "Real World 407 AD" unless the Lore explicitly confirms it is Earth.
+       
+    2. DETERMINING THE TECH LEVEL:
+       - CHECK LORE FIRST: Scan the Lore below. Does it mention magic, advanced tech, or specific tools? USE THAT.
+       - REAL WORLD FALLBACK (Conditional): ONLY if the Lore is SILENT and the setting appears to be Earth, use real-world history for the year {era_display}.
+         * Example: Year 1990 + "New York" -> Use Real 1990 Tech (VHS, Landlines).
+         * Example: Year 407 + "Kingdom of Asura" -> IGNORE Real 407 AD. Use the Fantasy Logic defined in Rules.
+       
+    3. REALISM WITHIN CONTEXT: 
+       - Once the Tech Level is set (Fantasy or Real), maintain internal consistency.
+       - If it's Fantasy, describe the fantasy elements realistically (e.g. the hum of the magic crystal).
+
     *** WORLD LAWS & MECHANICS (STRICT) ***
     {rules}
     {privacy_protocol}
     {variables_section}
     
-    *** STRATEGIC PLAN (THE FUTURE) ***
+    *** STRATEGIC PLAN ***
     {plan}
 
-    *** RELEVANT LORE & HISTORY (SMART RETRIEVAL) ***
+    *** RELEVANT LORE & CONTEXT (SMART RETRIEVAL) ***
     {smart_context_str}
 
     *** WORLD STATE & PROJECTS ***
@@ -650,7 +661,7 @@ def draft_scene(state: StoryState):
     
     *** FORMATTING ***
     {header}
-    (Start prose below header. NO Title in body. NO 'But/And' starts).
+    (Start prose below header. NO Title in body).
     
     {timeline_section}
     
@@ -668,10 +679,10 @@ def draft_scene(state: StoryState):
     
     # Execute Generation
     llm = get_llm(profile, "scene", settings=settings)
-    response = llm.invoke([HumanMessage(content=prompt)])
+    response = llm.invoke([HumanMessage(content=prompt)]).content
     
     return {
-        "current_draft": response.content, 
+        "current_draft": response, 
         "revision_count": state['revision_count'] + 1, 
         "banned_words": ", ".join(all_banned)
     }
@@ -836,14 +847,12 @@ def infer_header_data(brief, prev_context, settings, profile_name):
 
 def run_chat_query(profile_name, user_input):
     """
-    Interacts with the Co-Author persona (v14.0 Smart Retrieval).
-    
-    Upgrade: Uses the Librarian to find specific Lore/Facts related to the 
-    user's question instead of dumping the whole database.
+    Interacts with the Co-Author persona (Adaptive Logic).
     """
-    # Retrieve Global Context (Rules & Plans are always relevant)
+    # Retrieve Global Context
     rules, plan, _ = get_global_context(profile_name)
     state = get_world_state(profile_name)
+    settings = get_story_settings(profile_name)
 
     # Get Recent Narrative
     recent_scenes = get_last_scenes(profile_name)
@@ -855,36 +864,58 @@ def run_chat_query(profile_name, user_input):
         user_query=user_input, 
         doc_types=["Lore", "Fact", "Rulebook"]
     )
-
+    
     smart_knowledge = get_content_by_ids(profile_name, relevant_ids)
     if not smart_knowledge:
-        smart_knowledge = "No specific database records found for this query."
+        smart_knowledge = "No specific database records found (Relying on General Knowledge)."
+
+    # Era / Tech-Level Detection (Standardized)
+    use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
+    era_display = "Undefined (Infer Tech Level from Lore)"
+    if use_time_system and state.get('year', 0) > 0:
+        era_display = f"{state['year']}"
     
-    # Construct Prompt
+    # Construct Prompt (HIERARCHY OF TRUTH + CALENDAR AGNOSTIC)
     prompt = f"""
-    ROLE: Co-Author & Lorekeeper.
+    ROLE: Co-Author & Omniscient Editor.
     
-    *** STORY BIBLE (SMART RETRIEVAL) ***
+    *** TEMPORAL STATUS ***
+    CURRENT CALENDAR YEAR: {era_display}
+    
+    *** PRIMARY SOURCE OF TRUTH (STORY BIBLE) ***
     {smart_knowledge}
     
-    *** WORLD RULES & PHYSICS ***
+    *** WORLD RULES (IMMUTABLE) ***
     {rules}
     
-    *** FUTURE PLANS ***
+    *** FUTURE PLANS (DRAFTS) ***
     {plan[:3000]}
     
     *** CURRENT WORLD STATE ***
     {json.dumps(state)}
     
-    *** RECENT NARRATIVE EVENTS ***
+    *** RECENT NARRATIVE ***
     {recent_scenes}
     
     *** USER QUERY ***
     "{user_input}"
     
-    *** INSTRUCTION ***
-    Answer the user's question based strictly on the provided Context and Lore.
-    If the answer is not in the context, say "I don't have that specific record loaded," or propose a creative solution consistent with the World Rules.
+    *** INSTRUCTION & LOGIC ***
+    You are an Omniscient Editor. You know real-world history AND the story's lore.
+    Follow this HIERARCHY OF TRUTH to answer the query:
+    
+    1. RANK 1: LORE & RULES (ABSOLUTE TRUTH)
+       - If the Story Bible mentions a technology or concept, ACCEPT IT as fact, regardless of the year.
+       - If Lore says "Year 407" has airships, then airships exist. Do NOT assume "Year 407" means "Real Earth 407 AD".
+    
+    2. RANK 2: REAL WORLD KNOWLEDGE (CONDITIONAL FALLBACK)
+       - If the Lore is SILENT, check the setting type:
+         * IF EARTH-BASED: Use real-world history/science for the year {era_display}. (e.g. 1920 = Prohibition Era).
+         * IF FANTASY/ALIEN: Do NOT use Earth history. Infer the logic from the Rules (e.g. "If magic exists, use magic for medicine, not leeches").
+    
+    3. RANK 3: CHRONOLOGY CHECK (THE SAFETY NET)
+       - If the user asks for something that contradicts Rank 1 or Rank 2 (e.g. "iPhone in 1920"), FLAG IT as an anachronism.
+       - However, if the user asks for a DEFINITION (e.g. "What is an iPhone?"), answer accurately but note it doesn't exist yet in the story.
     """
     
     llm = get_llm(profile_name, "chat")
@@ -892,11 +923,11 @@ def run_chat_query(profile_name, user_input):
 
 def generate_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard", custom_instructions=""):
     """
-    Simulates a faction's reaction to a scene using Smart Retrieval.
+    Simulates a faction's reaction (Adaptive Formats).
     
-    Optimizations:
-    1. Alias Resolution: Maps nicknames ("The Spies") to database keys ("Guild of Whispers").
-    2. Smart Context: Fetches only Lore/Facts relevant to THIS faction and THIS scene.
+    Upgrade: Includes 'Format Adaptation'. If the user requests 'Social Media' 
+    in a Medieval setting, the AI automatically transmutes it to 'Tavern Gossip' 
+    or 'Town Crier' to preserve immersion.
     """
     # Alias Resolution
     true_faction = smart_retrieval.resolve_faction_alias(profile_name, faction)
@@ -906,13 +937,19 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     rules, plan, _ = get_global_context(profile_name)
     state = get_world_state(profile_name)
     content = read_file_content(profile_name, filename)
+    settings = get_story_settings(profile_name)
     
-    # Retrieve Faction Voice (Tone History)
+    # Era / Tech-Level Detection (Same as Draft Scene)
+    use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
+    era_display = "Undefined (Infer Tech Level from Lore)"
+    if use_time_system and state.get('year', 0) > 0:
+        era_display = f"{state['year']}"
+
+    # Retrieve Faction Voice
     past_reactions = get_recent_faction_memory(profile_name, true_faction)
     
-    # Smart Retrieval (Contextual Grounding)
+    # Smart Retrieval
     query = f"Faction '{true_faction}' reacting to scene content: {content[:800]}..."
-    
     relevant_ids = smart_retrieval.get_relevant_fragment_ids(
         profile_name, 
         user_query=query, 
@@ -929,7 +966,8 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     # Context Instruction Layer
     knowledge_instr = (
         "You are reading the unredacted scene. HOWEVER, act strictly as the Target Faction. "
-        "DO NOT reference internal thoughts of others. React ONLY to observable actions."
+        "DO NOT reference internal thoughts of others unless the provided Rules/Lore explicitly grant telepathic abilities. "
+        "Otherwise, react ONLY to observable actions."
     )
     if public_only:
         knowledge_instr = (
@@ -937,35 +975,40 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
             "You DO NOT know what happened in the redacted sections. Do NOT guess accurately."
         )
 
-    # Prompt Construction
+    # Prompt Construction (ADAPTIVE FORMATS)
     prompt = f"""
     ROLE: Narrative Simulator (Grounded in History & State).
     TARGET FACTION: {true_faction}
+    CURRENT YEAR/ERA: {era_display}
     
-    *** WORLD STATE ***
-    Current Year: {state.get('Current_Year', 'Unknown')}
+    *** WORLD STATE & DATA ***
     Character Data: {json.dumps(state.get('Allies', []))}
     
-    *** VOICE & TONE REFERENCE ***
-    Use these past logs to mimic specific speech patterns:
-    {past_reactions}
-
     *** RELEVANT INTELLIGENCE (SMART RETRIEVAL) ***
     {smart_facts}
+    
+    *** VOICE & TONE REFERENCE ***
+    {past_reactions}
 
     *** MISSION ***
     Write a reaction to the SCENE provided below.
+
+    *** FORMAT ADAPTATION PROTOCOL (CRITICAL) ***
+    Requested Format: "{format_style}"
     
-    CRITICAL CONSISTENCY RULES:
-    1. AGE CHECK: Check character data. Children must sound like children.
-    2. MEMORY ESCALATION: Build upon previous reactions found in Voice Reference.
+    INSTRUCTION: You must check if the Requested Format exists in the Current Era ({era_display}).
+    1. IF COMPATIBLE: Use the format as requested (e.g. "Newspaper" in 1920).
+    2. IF ANACHRONISTIC: Transmute the format to the closest era-appropriate equivalent.
+       - Example: User asks for "Twitter/X" in 1200 AD -> You write "Tavern Gossip" or "Town Square Shouting."
+       - Example: User asks for "Newspaper" in 2200 AD -> You write "Holographic News Feed."
+       - Example: User asks for "Boardroom Meeting" for a Gang -> You write "Backroom Deal."
+    
+    *** HIERARCHY OF TRUTH ***
+    1. LORE PRIORITY: If Lore says "Telepathy exists," then "Mental Chat" is a valid format.
+    2. REALISM: Use real-world logic for the Era to determine how news travels (Horse? Telegraph? Subspace?).
 
     *** ADDITIONAL INSTRUCTIONS ***
     {custom_instructions if custom_instructions else "Follow standard personality and lore."}
-
-    *** FORMATTING ***
-    Format: "{format_style}"
-    (Adopt the slang, structure, and limitations of this medium).
     
     *** KNOWLEDGE CONSTRAINTS ***
     {knowledge_instr}
@@ -1027,7 +1070,7 @@ def get_recent_faction_memory(profile_name, faction, limit=3):
 
 def run_war_room_simulation(profile_name, action_input):
     """
-    Executes a Monte Carlo strategic simulation (v14.0 Smart Retrieval).
+    Executes a Monte Carlo strategic simulation (Smart Retrieval).
     
     Upgrade: Now uses the 'Librarian' to find specific historical precedents, 
     enemy capabilities (Lore), and reads recent scenes to understand the 
@@ -1053,16 +1096,16 @@ def run_war_room_simulation(profile_name, action_input):
 
     # Construct the Dossier
     intel_packet = f"""
-    *** CURRENT EMPIRE STATE ***
+    *** CURRENT ASSETS & STATUS ***
     Protagonist Status: {json.dumps(state.get('Protagonist Status', {}))}
     Known Allies & Enemies: {json.dumps(state.get('Allies', []))}
     Available Assets: {json.dumps(state.get('Assets', []))}
     Current Skills: {json.dumps(state.get('Skills', []))}
     
-    *** TACTICAL SITUATION (RECENT EVENTS) ***
+    *** IMMEDIATE CONTEXT (RECENT EVENTS) ***
     {recent_history[-4000:]} 
     
-    *** RELEVANT INTELLIGENCE (LORE/FACTS) ***
+    *** RELEVANT KNOWLEDGE (LORE/FACTS) ***
     {smart_intel}
     """
     
@@ -1072,38 +1115,39 @@ def run_war_room_simulation(profile_name, action_input):
     *** WORLD RULES & PHYSICS ***
     {rules}
     
-    *** INTELLIGENCE PACKET ***
+    *** CONTEXT PACKET ***
     {intel_packet}
     
-    *** STRATEGIC GOAL / PLAN ***
+    *** CURRENT GOAL ***
     {plan[:2000]}
     
     *** PROPOSED ACTION ***
     "{action_input}"
     
     *** MISSION ***
-    Simulate the consequences of this action. Do not write a story. Write a STRATEGIC REPORT.
+    Simulate the consequences of this action based on the World Rules.
+    Do not write a story. Write a CAUSALITY REPORT.
     
     *** REPORT FORMAT ***
     ## 📊 Simulation Results
     **Probability of Success:** [0-100%]
     
-    ### 1. Direct Consequences (T+0 to T+1 Month)
-    * [Immediate Outcome]
-    * [Resource Cost]
+    ### 1. Direct Consequences (Immediate Outcome)
+    * [What happens if the action succeeds/fails?]
+    * [Cost (Resources, Health, Reputation, or Time)]
     
     ### 2. Second-Order Effects (The Ripple)
-    * [Unintended side effects on allies/enemies]
-    * [Political/Economic shifts]
+    * [Unintended side effects on Relationships/Factions/Environment]
+    * [Systemic shifts (Social, Political, Economic, or Magical)] <-- BROADER SCOPE
     
     ### 3. Critical Risks (Blowback)
-    * [Who gets angry?]
-    * [What could go wrong?]
+    * [Who/What reacts negatively?]
+    * [Potential catastrophe?]
     
     ### 4. Verdict
     [Go / No-Go recommendation]
     """
-
+    
     llm = get_llm(profile_name, "analysis")
     return llm.invoke([HumanMessage(content=prompt)]).content
 

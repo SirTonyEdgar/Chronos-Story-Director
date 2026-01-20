@@ -21,6 +21,7 @@ import math
 import uuid
 import pandas as pd
 import streamlit as st
+import base64
 from pypdf import PdfReader
 from streamlit_agraph import agraph, Node, Edge, Config
 import shutil
@@ -36,38 +37,65 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- HELPER: ASSET LOADER ---
+def get_icon_path(filename):
+    """Returns the local file path for Streamlit UI (st.image)."""
+    return os.path.join("assets", filename)
+
+def get_icon_base64(filename):
+    """
+    Converts a local image to a Base64 Data URI.
+    REQUIRED for streamlit-agraph (Network Map) to display local images.
+    """
+    filepath = os.path.join("assets", filename)
+
+    if not os.path.exists(filepath):
+        return "https://img.icons8.com/?size=100&id=12116&format=png&color=000000"
+        
+    with open(filepath, "rb") as f:
+        data = f.read()
+        encoded = base64.b64encode(data).decode()
+    return f"data:image/png;base64,{encoded}"
+
 # Centralized Icon Repository to ensure consistency across Status and Network tabs
 AVATAR_MANIFEST = {
-    "Male": "https://img.icons8.com/plasticine/100/user.png",
-    "Female": "https://img.icons8.com/plasticine/100/user-female.png",
-    "Neutral": "https://img.icons8.com/plasticine/100/test-account.png",
-    "Child": "https://img.icons8.com/?size=100&id=AVpzD6vFtDev&format=png&color=000000",
-    "Student": "https://img.icons8.com/?size=100&id=g34sfj4NMisg&format=png&color=000000",
-    "CEO": "https://img.icons8.com/?size=100&id=kSbhCMkEg8pf&format=png&color=000000",
-    "King": "https://img.icons8.com/plasticine/100/crown.png",          
-    "Queen": "https://img.icons8.com/plasticine/100/jewelry.png",      
-    "Wizard": "https://img.icons8.com/plasticine/100/wizard.png",
-    "Cyborg": "https://img.icons8.com/plasticine/100/bot.png",
-    "Cat": "https://img.icons8.com/plasticine/100/cat.png"
+    "Male": "male.png",
+    "Female": "female.png",
+    "Neutral": "neutral.png",
+    "Villain": "villain.png",
+
+    "Leader/Noble": "crown.png",
+    "Official/Diplomat": "diplomat.png",
+    "Wizard": "wizard.png",
+    "Tech/Cyborg": "cyborg.png",
+    "Soldier": "soldier.png",
+    "Knight": "knight.png",
+    "Merchant": "merchant.png",
+    "Worker/Civilian": "worker.png",
+
+    "Child": "child.png",
+    "Student": "student.png",
+    "Cat": "cat.png"
 }
 
 RELATIONSHIP_ICONS = {
-    "Ally": "https://img.icons8.com/plasticine/100/handshake.png",
-    "Family": "https://img.icons8.com/plasticine/100/family.png",
-    "Enemy": "https://img.icons8.com/plasticine/100/skull.png",
-    "Rival": "https://img.icons8.com/?size=100&id=FUQb5zbnGl7l&format=png&color=000000",
-    "Love": "https://img.icons8.com/plasticine/100/like--v1.png",
-    "Mentor": "https://img.icons8.com/plasticine/100/wizard.png",
-    "Vassal": "https://img.icons8.com/?size=100&id=MG9ci5zWEW89&format=png&color=000000",
-    "Target": "https://img.icons8.com/plasticine/100/goal.png",
-    "Resource": "https://img.icons8.com/plasticine/100/money-bag.png",
-    "Weapon": "https://img.icons8.com/?size=100&id=36688&format=png&color=000000",
-    "Technology": "https://img.icons8.com/?size=100&id=lSXsn9erua8J&format=png&color=000000",
-    "Finance": "https://img.icons8.com/?size=100&id=ifHQwCcjmWZJ&format=png&color=000000",
-    "Investment": "https://img.icons8.com/?size=100&id=XmSoADTK7BM9&format=png&color=000000",
-    "Information": "https://img.icons8.com/?size=100&id=Y4lyJQODpHWN&format=png&color=000000",
-    "Security": "https://img.icons8.com/?size=100&id=9III381sJEY5&format=png&color=000000",
-    "Unknown": "https://img.icons8.com/plasticine/100/question-mark.png"
+    "Ally": "handshake.png",
+    "Family": "family.png",
+    "Enemy": "skull.png",
+    "Rival": "fist-bump.png",
+    "Love": "heart.png",
+    "Mentor": "mentoring.png",
+    "Subordinate/Vassal": "human.png",
+    "Target": "target.png",
+    "Resource/Item": "treasure-chest.png",
+    "Weapon": "sword.png",
+    "Technology": "technology.png",
+    "Magic": "potion.png",
+    "Wealth/Economy": "wealth.png",
+    "Investment": "investment.png",
+    "Intel/Secrets": "ancient-scroll.png",
+    "Security/Defense": "shield.png",
+    "Unknown": "question-mark.png"
 }
 
 # --- CACHING & UTILITIES ---
@@ -169,7 +197,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v14.1 - Smart Retrieval")
+    st.caption("v14.2 - ")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -339,19 +367,18 @@ elif page == "🕸️ Network Map":
     p_data = current_state.get("Protagonist Status", {})
     p_name = p_data.get("Name", "Protagonist")
     p_icon_key = p_data.get("Icon", "Male")
-    
-    # Resolve Icon from Global Manifest
-    p_icon_url = AVATAR_MANIFEST.get(p_icon_key, AVATAR_MANIFEST["Male"])
-    
-    # Central Node (Pinned)
+
+    p_icon_filename = AVATAR_MANIFEST.get(p_icon_key, "male.png")
+    p_icon_url = get_icon_base64(p_icon_filename)
+
     nodes.append(Node(
         id="MAIN", label=p_name, size=50, shape="circularImage", 
         image=p_icon_url,
         font=font_style, x=0, y=0, fixed=True
     ))
+
     existing_ids.add("MAIN")
-    
-    # Neighbor Nodes
+
     allies = current_state.get("Allies", [])
     assets = current_state.get("Assets", [])
     total = len(allies) + len(assets)
@@ -380,12 +407,13 @@ elif page == "🕸️ Network Map":
             counter += 1
         existing_ids.add(node_id)
 
-        icon_url = FULL_ICON_MAP.get(ally.get("Icon", "Ally"), RELATIONSHIP_ICONS["Ally"])
+        filename = FULL_ICON_MAP.get(ally.get("Icon", "Ally"), "handshake.png")
+        icon_url = get_icon_base64(filename)
         
         lx, ly = get_coords(current_idx, total, radius)
         current_idx += 1
         
-        nodes.append(Node(id=node_id, label=raw_name, size=30, shape="circularImage", image=icon_url, font=font_style, x=lx, y=ly, fixed=True))
+        nodes.append(Node(id=node_id, label=raw_name, size=40, shape="circularImage", image=icon_url, font=font_style, x=lx, y=ly, fixed=True))
         edges.append(Edge(source="MAIN", target=node_id, label=ally.get("Relation", "Ally"), color="#4CAF50", font=edge_font))
 
     # --- ASSET LOOP ---
@@ -401,13 +429,14 @@ elif page == "🕸️ Network Map":
         existing_ids.add(node_id)
 
         icon_key = asset.get("Icon", "Resource")
-        icon_url = FULL_ICON_MAP.get(icon_key, RELATIONSHIP_ICONS["Resource"])
+        filename = FULL_ICON_MAP.get(icon_key, "chest.png")
+        icon_url = get_icon_base64(filename)
 
         lx, ly = get_coords(current_idx, total, radius)
         current_idx += 1
         
         nodes.append(Node(
-            id=node_id, label=raw_name, size=25, shape="circularImage", 
+            id=node_id, label=raw_name, size=35, shape="circularImage", 
             image=icon_url,
             font=font_style, x=lx, y=ly, fixed=True
         ))
@@ -523,7 +552,8 @@ elif page == "📊 World State Tracker":
             
             # Avatar Preview
             st.caption("Avatar Preview:")
-            st.image(AVATAR_MANIFEST[p_data["Icon"]], width=60)
+            icon_filename = AVATAR_MANIFEST[p_data["Icon"]]
+            st.image(get_icon_path(icon_filename), width=60)
 
         # --- RIGHT COLUMN: DATA & TIME ---
         with c2:
@@ -692,7 +722,7 @@ elif page == "📊 World State Tracker":
             i = 0
             for name, url in RELATIONSHIP_ICONS.items():
                 with cols[i % 9]:
-                    st.image(url, width=40)
+                    st.image(get_icon_path(url), width=40)
                     st.caption(name)
                 i += 1
 
@@ -727,7 +757,7 @@ elif page == "📊 World State Tracker":
             i = 0
             for name, url in RELATIONSHIP_ICONS.items():
                 with cols[i % 9]:
-                    st.image(url, width=40)
+                    st.image(get_icon_path(url), width=40)
                     st.caption(name)
                 i += 1
 
