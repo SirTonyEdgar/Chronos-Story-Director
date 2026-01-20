@@ -971,180 +971,6 @@ def analyze_state_changes(profile_name, scene_content):
         print(f"Analysis Error: {e}")
         return state
 
-# --- COMPILER ---
-def compile_manuscript(profile_name, files):
-    """Compiles selected files into a single manuscript."""
-    return "\n***\n".join([read_file_content(profile_name, f) for f in files])
-
-def compile_formatted_manuscript(profile_name: str, selected_files: List[str]) -> Dict[str, bytes]:
-    """
-    Compiles selected scene files into professional PDF and EPUB formats.
-    Performs 'Typesetting' cleanups:
-    - Removes [[PRIVATE]] tags (keeps content).
-    - Formats 'Reactions' as proper Interludes/Dossiers.
-    - Sanitizes smart quotes/dashes for PDF compatibility.
-    """
-    paths = get_paths(profile_name)
-    
-    # --- HELPER: TEXT CLEANER ---
-    def clean_manuscript_text(text):
-        # Remove System Tags (Privacy)
-        text = text.replace("[[PRIVATE]]", "").replace("[[/PRIVATE]]", "")
-        
-        # Sanitize Smart Characters for PDF (Latin-1 safe)
-        replacements = {
-            '\u201c': '"', '\u201d': '"',  # Smart double quotes
-            '\u2018': "'", '\u2019': "'",  # Smart single quotes
-            '\u2013': '-', '\u2014': '--', # Dashes
-            '\u2026': '...',               # Ellipsis
-        }
-        for k, v in replacements.items():
-            text = text.replace(k, v)
-            
-        return text
-
-    # --- HELPER: REACTION FORMATTER ---
-    def format_reaction_blocks(text):
-        """
-        Converts raw '>>> REACTION' blocks into stylish 'Interludes'.
-        Removes the '✨ Custom' debug lines and metadata clutter (Parties, Format arrows).
-        """
-        # Split the text into the Main Scene and appended Reactions
-        parts = re.split(r'>>> REACTION:', text)
-        
-        # Part 0 is the main story
-        final_text = clean_manuscript_text(parts[0].strip())
-        
-        # Process any reactions (Parts 1+)
-        if len(parts) > 1:
-            for raw_reaction in parts[1:]:
-                # Regex to parse the header: "Faction | Type <<<"
-                # pattern:  " Charles Koch | Private Discussions <<<\n✨ Custom..."
-                header_match = re.search(r'\s*(.*?) \|\s*(.*?) <<<', raw_reaction)
-                
-                if header_match:
-                    faction = header_match.group(1).strip()
-                    r_type = header_match.group(2).strip()
-                    
-                    # Remove the header line AND the following "✨" line if it exists
-                    body = re.sub(r'\s*(.*?) \|\s*(.*?) <<<(\n✨.*)?', '', raw_reaction, count=1).strip()
-                    
-                    # Kill the "Category -> Format" line (e.g. "Private Discussion -> Private Conversation")
-                    body = re.sub(r'^.* -> .*$', '', body, flags=re.MULTILINE)
-                    
-                    # Kill the "PARTIES:" line entirely
-                    body = re.sub(r'^\s*(\*\*)?PARTIES:.*$', '', body, flags=re.MULTILINE)
-                    
-                    # Remove double stars (**Name**) if they exist in the body
-                    body = re.sub(r'\*\*(.*?)\*\*', r'\1', body)
-
-                    # Clean up extra empty lines created by the deletions
-                    body = re.sub(r'\n{3,}', '\n\n', body).strip()
-
-                    # Sanitize body text
-                    body = clean_manuscript_text(body)
-                    
-                    # PDF/EPUB visual separator
-                    final_text += "\n\n" + ("*" * 20) + "\n\n" 
-                    final_text += f"INTERLUDE: {faction.upper()}\n"
-                    final_text += f"Type: {r_type}\n"
-                    final_text += ("-" * 20) + "\n\n"
-                    final_text += body
-                else:
-                    # Fallback if regex fails (just clean and append)
-                    final_text += "\n\n***\n\n" + clean_manuscript_text(raw_reaction)
-                    
-        return final_text
-
-    # --- DATA AGGREGATION ---
-    chapters = []
-    for filename in selected_files:
-        raw_content = read_file_content(profile_name, filename)
-        
-        # Apply the Typesetting Logic
-        formatted_body = format_reaction_blocks(raw_content)
-
-        # Smart Title Logic (Ch04 -> Chapter 4)
-        base_name = filename.replace(".txt", "")
-        chapter_prefix = ""
-        match = re.search(r'(Ch\d+|Chapter_\d+)', base_name, re.IGNORECASE)
-        if match:
-            try:
-                num = int(re.search(r'\d+', match.group(0)).group(0))
-                chapter_prefix = f"Chapter {num}: "
-            except: pass
-
-        clean_parts = [p for p in base_name.split("_") if not re.match(r'(Ch\d+|Chapter|\d{4})', p)]
-        raw_title = " ".join(clean_parts)
-        final_title = f"{chapter_prefix}{raw_title}"
-
-        chapters.append({"title": final_title, "body": formatted_body})
-
-    results = {"pdf": None, "epub": None}
-
-    # --- PDF PIPELINE (fpdf2) ---
-    try:
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        
-        # Front Matter
-        pdf.add_page()
-        pdf.set_font("Times", "B", 24)
-        pdf.cell(0, 60, f"Story Profile: {profile_name}", align="C", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Times", "", 12)
-        pdf.cell(0, 10, "Generated by Chronos Story Director", align="C", new_x="LMARGIN", new_y="NEXT")
-        pdf.add_page()
-
-        # Chapter Loop
-        for chap in chapters:
-            pdf.set_font("Times", "B", 16)
-            pdf.cell(0, 10, chap['title'], new_x="LMARGIN", new_y="NEXT")
-            pdf.ln(5)
-            
-            pdf.set_font("Times", "", 12)
-            safe_body = chap['body'].encode('latin-1', 'ignore').decode('latin-1')
-            pdf.multi_cell(0, 6, safe_body)
-            pdf.ln(10) 
-            pdf.add_page()
-
-        results["pdf"] = bytes(pdf.output())
-    except Exception as e:
-        print(f"PDF Generation Error: {e}")
-
-    # --- EPUB PIPELINE (EbookLib) ---
-    try:
-        book = epub.EpubBook()
-        book.set_identifier(profile_name)
-        book.set_title(profile_name)
-        book.set_language('en')
-
-        epub_chapters = []
-        for i, chap in enumerate(chapters):
-            c = epub.EpubHtml(title=chap['title'], file_name=f'chap_{i}.xhtml', lang='en')
-            html_body = chap['body'].replace("\n", "<br/>")
-            html_body = html_body.replace("********************", "<hr/>")
-            
-            c.content = f"<h1>{chap['title']}</h1><p>{html_body}</p>"
-            book.add_item(c)
-            epub_chapters.append(c)
-
-        book.toc = (epub_chapters)
-        book.add_item(epub.EpubNcx())
-        book.add_item(epub.EpubNav())
-        style = 'body { font-family: serif; } h1 { text-align: center; }'
-        nav_css = epub.EpubItem(uid="style_nav", file_name="style/nav.css", media_type="text/css", content=style)
-        book.add_item(nav_css)
-        book.spine = ['nav'] + epub_chapters
-        
-        buffer = BytesIO()
-        epub.write_epub(buffer, book, {})
-        buffer.seek(0)
-        results["epub"] = buffer.getvalue()
-    except Exception as e:
-        print(f"EPUB Generation Error: {e}")
-
-    return results
-
 # --- REACTION TOOL ---
 def save_faction_reaction(profile_name, faction, text, scene_name):
     """Logs a raw reaction to the database to preserve 'Voice' and 'Tone'."""
@@ -1427,3 +1253,177 @@ def run_chat_query(profile_name, user_input):
     
     llm = get_llm(profile_name, "chat")
     return llm.invoke([HumanMessage(content=prompt)]).content
+
+# --- COMPILER ---
+def compile_manuscript(profile_name, files):
+    """Compiles selected files into a single manuscript."""
+    return "\n***\n".join([read_file_content(profile_name, f) for f in files])
+
+def compile_formatted_manuscript(profile_name: str, selected_files: List[str]) -> Dict[str, bytes]:
+    """
+    Compiles selected scene files into professional PDF and EPUB formats.
+    Performs 'Typesetting' cleanups:
+    - Removes [[PRIVATE]] tags (keeps content).
+    - Formats 'Reactions' as proper Interludes/Dossiers.
+    - Sanitizes smart quotes/dashes for PDF compatibility.
+    """
+    paths = get_paths(profile_name)
+    
+    # --- HELPER: TEXT CLEANER ---
+    def clean_manuscript_text(text):
+        # Remove System Tags (Privacy)
+        text = text.replace("[[PRIVATE]]", "").replace("[[/PRIVATE]]", "")
+        
+        # Sanitize Smart Characters for PDF (Latin-1 safe)
+        replacements = {
+            '\u201c': '"', '\u201d': '"',  # Smart double quotes
+            '\u2018': "'", '\u2019': "'",  # Smart single quotes
+            '\u2013': '-', '\u2014': '--', # Dashes
+            '\u2026': '...',               # Ellipsis
+        }
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+            
+        return text
+
+    # --- HELPER: REACTION FORMATTER ---
+    def format_reaction_blocks(text):
+        """
+        Converts raw '>>> REACTION' blocks into stylish 'Interludes'.
+        Removes the '✨ Custom' debug lines and metadata clutter (Parties, Format arrows).
+        """
+        # Split the text into the Main Scene and appended Reactions
+        parts = re.split(r'>>> REACTION:', text)
+        
+        # Part 0 is the main story
+        final_text = clean_manuscript_text(parts[0].strip())
+        
+        # Process any reactions (Parts 1+)
+        if len(parts) > 1:
+            for raw_reaction in parts[1:]:
+                # Regex to parse the header: "Faction | Type <<<"
+                # pattern:  " Charles Koch | Private Discussions <<<\n✨ Custom..."
+                header_match = re.search(r'\s*(.*?) \|\s*(.*?) <<<', raw_reaction)
+                
+                if header_match:
+                    faction = header_match.group(1).strip()
+                    r_type = header_match.group(2).strip()
+                    
+                    # Remove the header line AND the following "✨" line if it exists
+                    body = re.sub(r'\s*(.*?) \|\s*(.*?) <<<(\n✨.*)?', '', raw_reaction, count=1).strip()
+                    
+                    # Kill the "Category -> Format" line (e.g. "Private Discussion -> Private Conversation")
+                    body = re.sub(r'^.* -> .*$', '', body, flags=re.MULTILINE)
+                    
+                    # Kill the "PARTIES:" line entirely
+                    body = re.sub(r'^\s*(\*\*)?PARTIES:.*$', '', body, flags=re.MULTILINE)
+                    
+                    # Remove double stars (**Name**) if they exist in the body
+                    body = re.sub(r'\*\*(.*?)\*\*', r'\1', body)
+
+                    # Clean up extra empty lines created by the deletions
+                    body = re.sub(r'\n{3,}', '\n\n', body).strip()
+
+                    # Sanitize body text
+                    body = clean_manuscript_text(body)
+                    
+                    # PDF/EPUB visual separator
+                    final_text += "\n\n" + ("*" * 20) + "\n\n" 
+                    final_text += f"INTERLUDE: {faction.upper()}\n"
+                    final_text += f"Type: {r_type}\n"
+                    final_text += ("-" * 20) + "\n\n"
+                    final_text += body
+                else:
+                    # Fallback if regex fails (just clean and append)
+                    final_text += "\n\n***\n\n" + clean_manuscript_text(raw_reaction)
+                    
+        return final_text
+
+    # --- DATA AGGREGATION ---
+    chapters = []
+    for filename in selected_files:
+        raw_content = read_file_content(profile_name, filename)
+        
+        # Apply the Typesetting Logic
+        formatted_body = format_reaction_blocks(raw_content)
+
+        # Smart Title Logic (Ch04 -> Chapter 4)
+        base_name = filename.replace(".txt", "")
+        chapter_prefix = ""
+        match = re.search(r'(Ch\d+|Chapter_\d+)', base_name, re.IGNORECASE)
+        if match:
+            try:
+                num = int(re.search(r'\d+', match.group(0)).group(0))
+                chapter_prefix = f"Chapter {num}: "
+            except: pass
+
+        clean_parts = [p for p in base_name.split("_") if not re.match(r'(Ch\d+|Chapter|\d{4})', p)]
+        raw_title = " ".join(clean_parts)
+        final_title = f"{chapter_prefix}{raw_title}"
+
+        chapters.append({"title": final_title, "body": formatted_body})
+
+    results = {"pdf": None, "epub": None}
+
+    # --- PDF PIPELINE (fpdf2) ---
+    try:
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        
+        # Front Matter
+        pdf.add_page()
+        pdf.set_font("Times", "B", 24)
+        pdf.cell(0, 60, f"Story Profile: {profile_name}", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Times", "", 12)
+        pdf.cell(0, 10, "Generated by Chronos Story Director", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.add_page()
+
+        # Chapter Loop
+        for chap in chapters:
+            pdf.set_font("Times", "B", 16)
+            pdf.cell(0, 10, chap['title'], new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(5)
+            
+            pdf.set_font("Times", "", 12)
+            safe_body = chap['body'].encode('latin-1', 'ignore').decode('latin-1')
+            pdf.multi_cell(0, 6, safe_body)
+            pdf.ln(10) 
+            pdf.add_page()
+
+        results["pdf"] = bytes(pdf.output())
+    except Exception as e:
+        print(f"PDF Generation Error: {e}")
+
+    # --- EPUB PIPELINE (EbookLib) ---
+    try:
+        book = epub.EpubBook()
+        book.set_identifier(profile_name)
+        book.set_title(profile_name)
+        book.set_language('en')
+
+        epub_chapters = []
+        for i, chap in enumerate(chapters):
+            c = epub.EpubHtml(title=chap['title'], file_name=f'chap_{i}.xhtml', lang='en')
+            html_body = chap['body'].replace("\n", "<br/>")
+            html_body = html_body.replace("********************", "<hr/>")
+            
+            c.content = f"<h1>{chap['title']}</h1><p>{html_body}</p>"
+            book.add_item(c)
+            epub_chapters.append(c)
+
+        book.toc = (epub_chapters)
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        style = 'body { font-family: serif; } h1 { text-align: center; }'
+        nav_css = epub.EpubItem(uid="style_nav", file_name="style/nav.css", media_type="text/css", content=style)
+        book.add_item(nav_css)
+        book.spine = ['nav'] + epub_chapters
+        
+        buffer = BytesIO()
+        epub.write_epub(buffer, book, {})
+        buffer.seek(0)
+        results["epub"] = buffer.getvalue()
+    except Exception as e:
+        print(f"EPUB Generation Error: {e}")
+
+    return results

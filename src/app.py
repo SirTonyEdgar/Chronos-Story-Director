@@ -165,8 +165,8 @@ with st.sidebar:
 
     nav_options = [
         "🎬 Scene Creator", "⚔️ War Room", "🕸️ Network Map", 
-        "📊 World State Tracker", "📚 Compiler", "🗄️ Knowledge Base", 
-        "🗣️ Reaction Tool", "🧠 Co-Author Chat", "⚙️ Settings"
+        "📊 World State Tracker", "🗄️ Knowledge Base", 
+        "🗣️ Reaction Tool", "🧠 Co-Author Chat", "📚 Compiler", "⚙️ Settings"
     ]
     if "active_page" not in st.session_state:
         st.session_state.active_page = st.query_params.get("page", "🎬 Scene Creator")
@@ -532,18 +532,18 @@ elif page == "📊 World State Tracker":
         # Sync with DB Settings
         sys_settings = engine.get_story_settings(profile)
         
-        st.info("🎭 **Identity Management:** The AI uses 'True Identity' for memory, but writes the story using 'Current Name'.")
+        st.info("🎭 **Identity Protocol:** 'True Identity' accesses deep memory/lore. 'Current Name' is used for prose generation (e.g. handling disguises or titles).")
         
         c1, c2 = st.columns(2)
         
         # --- LEFT COLUMN: VISUALS & PERSONA ---
         with c1:
             st.subheader("📖 Narrative Persona")
-            p_data["Name"] = st.text_input("Current Narrative Name", value=p_data.get("Name", "Unknown"), help="The name used in prose (e.g. 'Anthony walked...').")
-            p_data["Aliases"] = st.text_area("Known Aliases / Nicknames", value=p_data.get("Aliases", ""), help="Comma-separated list (e.g. 'Tony, The Kid').", height=68)
+            p_data["Name"] = st.text_input("Current Narrative Name", value=p_data.get("Name", "Unknown"), help="The specific name used in prose generation (e.g. 'The Red Ranger' vs 'Jason'). Change this to handle disguises.")
+            p_data["Aliases"] = st.text_area("Known Aliases / Nicknames", value=p_data.get("Aliases", ""), help="Other names the AI should recognize as referring to the protagonist (e.g. 'Subject Zero, The Asset').", height=68)
             
             # Current Goal
-            p_data["Goal"] = st.text_area("Current Goal", value=p_data.get("Goal", ""), height=100, help="What is the character trying to achieve right now?")
+            p_data["Goal"] = st.text_area("Current Goal", value=p_data.get("Goal", ""), height=100, help="The immediate driving motivation. The AI uses this to determine character actions in the War Room and Scenes.")
 
             # Protagonist Icon Selector
             current_icon = p_data.get("Icon", "Male")
@@ -558,7 +558,7 @@ elif page == "📊 World State Tracker":
         # --- RIGHT COLUMN: DATA & TIME ---
         with c2:
             st.subheader("🧠 Deep Memory")
-            true_name = st.text_input("True Identity (Context)", value=sys_settings.get('protagonist', ''), help="Original identity used for AI context grounding.")
+            true_name = st.text_input("True Identity (Context)", value=sys_settings.get('protagonist', ''), help="The character's actual identity. This ensures the AI accesses the correct memories even if the narrative name changes.")
             
             # --- Smart Age System ---
             st.caption("⏳ Temporal Tracking")
@@ -571,17 +571,17 @@ elif page == "📊 World State Tracker":
                 "Tracking Mode", 
                 ["Static Status (Manual)", "Birth Year (Auto-Calc)"], 
                 index=default_mode,
-                help="Use 'Static' for fantasy/abstract ages. Use 'Birth Year' for strict timelines."
+                help="Use 'Static' for abstract states (e.g. 'Ancient'). Use 'Birth Year' to let the AI auto-calculate age based on the Scene Year."
             )
             
             if age_mode == "Birth Year (Auto-Calc)":
                 # World Clock (Global State)
                 curr_year = current_state.get("Current_Year", None) 
-                c_y_input = st.number_input("Current World Year", value=curr_year, step=1, help="The current year in your story.")
+                c_y_input = st.number_input("Current World Year", value=curr_year, step=1, help="The current year in the narrative timeline.")
                 
                 # Birth Year
                 b_year_val = p_data.get("Birth_Year", None)
-                birth_year = st.number_input("Character Birth Year", value=b_year_val, step=1)
+                birth_year = st.number_input("Character Birth Year", value=b_year_val, step=1, help="Used to calculate age relative to the World Year.")
 
                 p_data["Date of Birth"] = st.text_input("Full Date of Birth", value=p_data.get("Date of Birth", ""), placeholder="e.g. 1984-03-06")
                 
@@ -597,7 +597,7 @@ elif page == "📊 World State Tracker":
                 
             else:
                 # Manual Mode
-                p_data["Age"] = st.text_input("Age / Status", value=str(p_data.get("Age", "Unknown")), help="e.g. '25', 'Immortal', 'Cryo-Frozen'")
+                p_data["Age"] = st.text_input("Age / Status", value=str(p_data.get("Age", "Unknown")), help="Manual override string (e.g. '25', 'Immortal', 'Cryo-Frozen').")
                 if "Birth_Year" in p_data: del p_data["Birth_Year"]
 
         current_state["Protagonist Status"] = p_data
@@ -610,6 +610,7 @@ elif page == "📊 World State Tracker":
 
     # --- TAB: PROJECTS ---
     elif selected_tab == "🚧 Projects":
+        st.info("🚧 **Long-Term Goals:** Projects track sustained efforts over time (e.g., 'Building a Base', 'Researching a Cure'). The AI checks the 'Specifications' and 'Progress' to determine if you have the capability to perform advanced actions.")
         projects = current_state.get("Projects", [])
         
         # New Project Creator
@@ -617,10 +618,10 @@ elif page == "📊 World State Tracker":
             with st.form("new_proj_form"):
                 c1, c2 = st.columns([1, 2])
                 with c1:
-                    n_name = st.text_input("Project Name", placeholder="e.g. Kernel Logic")
+                    n_name = st.text_input("Project Name", placeholder="e.g. Kernel Logic", help="Unique identifier for this long-term effort.")
                 with c2:
-                    n_desc = st.text_input("Objective", placeholder="e.g. Create predictive RAM algorithm")
-                n_specs = st.text_area("Initial Specifications", height=100)
+                    n_desc = st.text_input("Objective", placeholder="e.g. Create predictive RAM algorithm", help="The success condition. What does '100% Progress' look like?")
+                n_specs = st.text_area("Initial Specifications", height=100, help="Technical constraints or resources required. The AI checks this during simulations.")
                 
                 if st.form_submit_button("Initialize Project"):
                     engine.add_project(profile, n_name, n_desc, n_specs)
@@ -684,7 +685,7 @@ elif page == "📊 World State Tracker":
                             ["Lore", "Fact"], 
                             index=1, 
                             horizontal=True, 
-                            help="Lore is for permanent world-building; Facts are for narrative historical events."
+                            help="Lore = Universal World History. Fact = A specific historical event."
                         )
                         
                         final_hist = st.text_area("Final Summary", value=f"Final Result: {new_name}. Specs: {new_specs}", height=150, key=f"hist_{i}")
@@ -707,6 +708,7 @@ elif page == "📊 World State Tracker":
 
     # --- TAB: RELATIONS ---
     elif selected_tab == "🤝 Relations":
+        st.info("🤝 **Social Web:** Defines who helps or hinders you. The AI uses 'Loyalty' to calculate betrayal risks and 'Notes' to remember leverage/secrets during social interactions.")
         target_list = current_state.get("Allies", [])
         df_allies = pd.DataFrame(target_list)
         
@@ -717,7 +719,7 @@ elif page == "📊 World State Tracker":
 
         # Legend
         with st.expander("🖼️ Icon Reference"):
-            st.caption("Use these keys in the **Map Icon** column.")
+            st.caption("These icons determine the visual representation on the **Network Map**.")
             cols = st.columns(9)
             i = 0
             for name, url in RELATIONSHIP_ICONS.items():
@@ -732,16 +734,17 @@ elif page == "📊 World State Tracker":
             use_container_width=True,
             column_config={
                 "Name": st.column_config.TextColumn("Name", required=True, width="medium"),
-                "Relation": st.column_config.TextColumn("Relation", default="Ally"),
-                "Loyalty": st.column_config.NumberColumn("Loyalty %", min_value=0, max_value=100, default=50),
+                "Relation": st.column_config.TextColumn("Relation", default="Ally", help="Role relative to Protagonist (e.g. 'Rival', 'Mentor')."),
+                "Loyalty": st.column_config.NumberColumn("Loyalty %", min_value=0, max_value=100, default=50, help="0 = Betrayal Imminent, 100 = Unshakeable."),
                 "Icon": st.column_config.SelectboxColumn("Map Icon", options=list(RELATIONSHIP_ICONS.keys()), required=True, default="Ally"),
-                "Notes": st.column_config.TextColumn("Notes", width="large")
+                "Notes": st.column_config.TextColumn("Notes", width="large", help="Private notes on leverage, secrets, or status.")
             },
             key="editor_allies"
         ).to_dict(orient="records")
 
     # --- TAB: ASSETS ---
     elif selected_tab == "💰 Assets":
+        st.info("💰 **Inventory & Resources:** Physical or abstract tools. These provide 'Narrative Permission' (e.g. you cannot fly to Paris without a 'Private Jet' asset) and boost your power in the War Room.")
         assets_list = current_state.get("Assets", [])
         df_assets = pd.DataFrame(assets_list)
         if df_assets.empty:
@@ -767,9 +770,9 @@ elif page == "📊 World State Tracker":
             use_container_width=True,
             column_config={
                 "Asset": st.column_config.TextColumn("Asset Name", required=True),
-                "Type": st.column_config.TextColumn("Type", default="Financial"),
-                "Status": st.column_config.TextColumn("Status", default="Active"),
-                "Value": st.column_config.TextColumn("Value/Power", default="Unknown"),
+                "Type": st.column_config.TextColumn("Type", default="Financial", help="Category (e.g. 'Weapon', 'Property', 'Information')."),
+                "Status": st.column_config.TextColumn("Status", default="Active", help="Current condition (e.g. 'Damaged', 'Hidden', 'Liquidated')."),
+                "Value": st.column_config.TextColumn("Value/Power", default="Unknown", help="Narrative weight or monetary worth."),
                 "Notes": st.column_config.TextColumn("Notes", width="large"),
                 "Icon": st.column_config.SelectboxColumn("Map Icon", options=list(RELATIONSHIP_ICONS.keys()), required=True, default="Resource")
             },
@@ -778,6 +781,7 @@ elif page == "📊 World State Tracker":
 
     # --- TAB: SKILLS ---
     elif selected_tab == "⚡ Skills":
+        st.info("⚡ **Competence Modifiers:** Capabilities that unlock specific solutions. If you have 'Hacking', the AI allows cyber-warfare options; if you lack it, those options fail.")
         skills = current_state.get("Skills", [])
 
         normalized_skills = []
@@ -794,14 +798,14 @@ elif page == "📊 World State Tracker":
             use_container_width=True,
             column_config={
                 "Skill": st.column_config.TextColumn("Skill Name", required=True, width="medium"),
-                "Description": st.column_config.TextColumn("Mechanics / Details", width="large")
+                "Description": st.column_config.TextColumn("Mechanics / Details", width="large", help="How this skill affects scene outcomes or roll modifiers.")
             },
             key="editor_skills"
         )
 
     # --- TAB: WORLD VARIABLES ---
     elif selected_tab == "🌐 Variables":
-        st.info("🌐 **Abstract Simulation Layers:** Track abstract forces like 'Heat', 'Corruption', or 'Timeline Stability'. The AI will adjust the story based on these Rules.")
+        st.info("🌐 **World Mechanics (Variables):** Abstract global states (e.g., 'Defcon Level', 'Corruption', 'Mana'). The AI reads these values to enforce the 'Logic/Consequence Rule' on narrative outcomes.")
         
         current_vars = [v for v in current_state.get("World Variables", []) if isinstance(v, dict)]
         df_vars = pd.DataFrame(current_vars) if current_vars else pd.DataFrame(columns=["Name", "Value", "Mechanic"])
@@ -824,8 +828,8 @@ elif page == "📊 World State Tracker":
             use_container_width=True,
             column_config={
                 "Name": st.column_config.TextColumn("Variable Name", required=True, width="medium"),
-                "Value": st.column_config.TextColumn("Current State", width="small"),
-                "Mechanic": st.column_config.TextColumn("Logic / Consequence Rule", width="large")
+                "Value": st.column_config.TextColumn("Current State", width="small", help="The current level/status (e.g. '75%', 'Critical')."),
+                "Mechanic": st.column_config.TextColumn("Logic / Consequence Rule", width="large", help="The logical rule the AI follows (e.g. 'If Value > 50, police become hostile').")
             },
             key="editor_vars"
         ).to_dict(orient="records")
@@ -845,61 +849,6 @@ elif page == "📊 World State Tracker":
     if st.button("💾 Save State to Disk", type="primary", width="stretch"):
         engine.save_world_state(profile, current_state)
         st.toast("World State Saved!", icon="✅")
-
-# ==========================================
-# MODULE: COMPILER
-# ==========================================
-elif page == "📚 Compiler":
-    st.header("📚 Manuscript Compiler")
-    st.caption("Compile scenes into distribution-ready formats (PDF/EPUB).")
-    
-    all_scenes = engine.get_all_files_list(profile)
-    
-    # Scene Selector
-    # Scene Selector
-    selected = st.multiselect(
-        "Select Scenes to compile (Ordered):", 
-        all_scenes, 
-        default=[]
-    )
-    
-    if selected:
-        st.divider()
-        st.subheader("📦 Export Options")
-        
-        c1, c2, c3 = st.columns(3)
-        
-        # Option 1: Raw Text
-        with c1:
-            if st.button("📝 Compile Plain Text"):
-                text = engine.compile_manuscript(profile, selected)
-                st.download_button("Download .txt", text, f"{profile}_Manuscript.txt")
-                st.download_button("Download .md", text, f"{profile}_Manuscript.md")
-
-        # Option 2: Formatted Binaries
-        with c2:
-            if st.button("📕 Generate Book (PDF/EPUB)"):
-                with st.spinner("Typesetting document layout..."):
-                    formats = engine.compile_formatted_manuscript(profile, selected)
-                    
-                    if formats["pdf"]:
-                        st.download_button(
-                            label="Download PDF (Print)",
-                            data=formats["pdf"],
-                            file_name=f"{profile}_Manuscript.pdf",
-                            mime="application/pdf"
-                        )
-                    
-                    if formats["epub"]:
-                        st.download_button(
-                            label="Download EPUB (E-Reader)",
-                            data=formats["epub"],
-                            file_name=f"{profile}_Manuscript.epub",
-                            mime="application/epub+zip"
-                        )
-                    
-                    if not formats["pdf"] and not formats["epub"]:
-                        st.error("Formatting failed. Please check server logs for encoding errors.")
 
 # ==========================================
 # MODULE: KNOWLEDGE BASE
@@ -973,29 +922,29 @@ elif page == "🗄️ Knowledge Base":
     if selected_kb == "📜 Lore":
         render_smart_editor(
             "Lore", "Lore", "📜", 
-            help_text="📖 **Story Bible:** Permanent background information..."
+            help_text="📖 **Story Bible (Background):** Permanent history, geography, and character backstories. The AI consults this for context but knows these events happened in the *past*."
         )
     
     elif selected_kb == "📏 Rules":
         render_smart_editor(
             "Rulebook", "Rules", "📏", 
-            help_text="📏 **World Laws:** RPG Rulebooks or Narrative 'Laws'..."
+            help_text="📏 **World Physics (Immutable):** Hard laws of your universe (Magic Systems, FTL Physics, RPG Stats). The AI treats these as absolute constraints that *cannot* be broken."
         )
     
     elif selected_kb == "🗺️ Plans":
         render_smart_editor(
             "Plan", "Plans", "🗺️", 
-            help_text="🗺️ **Strategic Goals:** Future plot points or mission objectives..."
+            help_text="🗺️ **Future Roadmap (Context):** Plot points, villain schemes, or strategic goals that *haven't happened yet*. The AI uses this to foreshadow events without assuming they are current reality."
         )
 
     elif selected_kb == "📌 Facts":
         render_smart_editor(
             "Fact", "Facts", "📌", 
-            help_text="📌 **Established Truths:** Immediate narrative facts..."
+            help_text="📌 **Established Truths (Current):** Immediate narrative facts established in recent scenes (e.g., 'The King is dead', 'The base is destroyed'). These override older Lore."
         )
                 
     elif selected_kb == "🚫 Spoilers":
-        st.error("🚫 **Banned Content:** Words or plot points the AI must NEVER reveal yet.")
+        st.error("🚫 **Banned Content (The Anti-Prompt):** Concepts, twists, or names the AI is explicitly FORBIDDEN from mentioning until you decide it's time.")
         
         frags = engine.get_fragments(profile, "Spoiler")
         if not frags:
@@ -1196,6 +1145,61 @@ elif page == "🧠 Co-Author Chat":
             if st.button("Save to Scenes"):
                 engine.save_edited_scene(profile, s_name, history[-1]["content"])
                 st.success("Draft Saved!")
+
+# ==========================================
+# MODULE: COMPILER
+# ==========================================
+elif page == "📚 Compiler":
+    st.header("📚 Manuscript Compiler")
+    st.caption("Compile scenes into distribution-ready formats (PDF/EPUB).")
+    
+    all_scenes = engine.get_all_files_list(profile)
+    
+    # Scene Selector
+    # Scene Selector
+    selected = st.multiselect(
+        "Select Scenes to compile (Ordered):", 
+        all_scenes, 
+        default=[]
+    )
+    
+    if selected:
+        st.divider()
+        st.subheader("📦 Export Options")
+        
+        c1, c2, c3 = st.columns(3)
+        
+        # Option 1: Raw Text
+        with c1:
+            if st.button("📝 Compile Plain Text"):
+                text = engine.compile_manuscript(profile, selected)
+                st.download_button("Download .txt", text, f"{profile}_Manuscript.txt")
+                st.download_button("Download .md", text, f"{profile}_Manuscript.md")
+
+        # Option 2: Formatted Binaries
+        with c2:
+            if st.button("📕 Generate Book (PDF/EPUB)"):
+                with st.spinner("Typesetting document layout..."):
+                    formats = engine.compile_formatted_manuscript(profile, selected)
+                    
+                    if formats["pdf"]:
+                        st.download_button(
+                            label="Download PDF (Print)",
+                            data=formats["pdf"],
+                            file_name=f"{profile}_Manuscript.pdf",
+                            mime="application/pdf"
+                        )
+                    
+                    if formats["epub"]:
+                        st.download_button(
+                            label="Download EPUB (E-Reader)",
+                            data=formats["epub"],
+                            file_name=f"{profile}_Manuscript.epub",
+                            mime="application/epub+zip"
+                        )
+                    
+                    if not formats["pdf"] and not formats["epub"]:
+                        st.error("Formatting failed. Please check server logs for encoding errors.")
 
 # ==========================================
 # MODULE: SETTINGS
