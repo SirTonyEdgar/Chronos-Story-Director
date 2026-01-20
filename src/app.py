@@ -197,7 +197,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v14.2 - ")
+    st.caption("v14.2 - Adaptive Realism & Local Assets")
 
 # ==========================================
 # MODULE: SCENE CREATOR
