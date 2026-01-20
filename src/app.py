@@ -372,7 +372,7 @@ elif page == "🕸️ Network Map":
     p_icon_url = get_icon_base64(p_icon_filename)
 
     nodes.append(Node(
-        id="MAIN", label=p_name, size=50, shape="circularImage", 
+        id="MAIN", label=p_name, size=50, shape="image", 
         image=p_icon_url,
         font=font_style, x=0, y=0, fixed=True
     ))
@@ -413,7 +413,7 @@ elif page == "🕸️ Network Map":
         lx, ly = get_coords(current_idx, total, radius)
         current_idx += 1
         
-        nodes.append(Node(id=node_id, label=raw_name, size=40, shape="circularImage", image=icon_url, font=font_style, x=lx, y=ly, fixed=True))
+        nodes.append(Node(id=node_id, label=raw_name, size=40, shape="image", image=icon_url, font=font_style, x=lx, y=ly, fixed=True))
         edges.append(Edge(source="MAIN", target=node_id, label=ally.get("Relation", "Ally"), color="#4CAF50", font=edge_font))
 
     # --- ASSET LOOP ---
@@ -436,7 +436,7 @@ elif page == "🕸️ Network Map":
         current_idx += 1
         
         nodes.append(Node(
-            id=node_id, label=raw_name, size=35, shape="circularImage", 
+            id=node_id, label=raw_name, size=35, shape="image", 
             image=icon_url,
             font=font_style, x=lx, y=ly, fixed=True
         ))
@@ -1027,49 +1027,56 @@ elif page == "🗣️ Reaction Tool":
     
     # Template Library for Sub-Options
     REACTION_TEMPLATES = {
-        "👤 Individual Perspective": [
+        "👤 Individual / Personal": [
             "Internal Monologue / Private Thoughts",
             "Personal Diary / Journal Entry",
             "Direct Speech / Live Reaction",
-            "Formal Report / Debrief",
-            "Private Letter / Correspondence"
+            "Private Letter / Correspondence",
+            "Prayer / Meditation / Communion"
         ],
-        "🕵️ Private Discussion": [
-            "Boardroom Meeting / Secret Summit",
-            "Private Conversation",
-            "Secured Radio / Comms Chatter",
-            "Safehouse Briefing",
-            "Encrypted Group Chat",
-            "Private Group Chat"
+        "🏛️ Political / Bureaucratic": [
+            "Official Decree / Executive Order",
+            "Senate / Council Debate",
+            "Diplomatic Cable / Envoy Message",
+            "Internal Memo / Briefing Document",
+            "Propaganda Broadcast / Public Statement"
         ],
-        "🌐 Modern Internet": [
-            "Anonymous Imageboard (e.g. 4chan)",
-            "Social Media Feed (e.g. Twitter/X)",
-            "Video Comment Section (e.g. YouTube)",
-            "Niche Hobby Forum (e.g. Reddit/NMA)",
-            "Group Chat Leak (e.g. Discord/WhatsApp)"
+        "⚔️ Military / Tactical": [
+            "Combat Report / Sitrep (Situation Report)",
+            "Strategy Meeting / War Room",
+            "Radio Chatter / Field Comms",
+            "Officer's Log / Captain's Log",
+            "Soldier's Gossip / Barracks Talk"
         ],
-        "📜 Fantasy / Medieval": [
-            "Tavern Rumors / Gossip",
-            "Town Crier Announcement",
-            "Royal Court Whispers",
-            "Adventurer's Guild Quest Board",
-            "Magic Message / Telepathy"
+        "🕵️ Underground / Criminal": [
+            "Thieves' Cant / Code Words",
+            "Black Market Transaction Log",
+            "Encrypted Channel / Dark Web Post",
+            "Smuggler's Rumor / Tavern Whisper",
+            "Anonymous Tip / Leak"
         ],
-        "🚀 Sci-Fi / Cyberpunk": [
-            "Holonet Data Stream",
-            "Corporate News Flash",
-            "Hacker Encrypted Channel",
-            "Ship-to-Ship Comms",
-            "Android Memory Log"
+        "📢 Public Discourse / Media": [
+            "News Front Page / Headline",
+            "Social Media Feed / Viral Post",
+            "Town Crier / Public Announcement",
+            "Pundit Commentary / Opinion Piece",
+            "Commoner's Gossip / Watercooler Talk"
         ],
-        "📺 20th Century / Retro": [
-            "Newspaper Front Page",
-            "Radio Broadcast Transcript",
-            "Telegraph / Cable",
-            "Underground Pamphlet"
+        "🏢 Corporate / Economic": [
+            "Shareholder Report / Quarterly Earnings",
+            "Boardroom Meeting Minutes",
+            "Sales Pitch / Advertisement",
+            "Trade Guild Ledger / Manifest",
+            "Worker's Union Meeting"
         ],
-        "✨ Custom / Other": ["Manual Input"]
+        "🔬 Scientific / Arcane": [
+            "Lab Report / Research Log",
+            "Medical Diagnosis / Autopsy",
+            "Wizard's Grimoire / Spell Notes",
+            "AI System Log / Debug Output",
+            "Archaeological Discovery Note"
+        ],
+        "✨ Custom / Specific": ["Manual Input"]
     }
 
     if files:
@@ -1078,7 +1085,7 @@ elif page == "🗣️ Reaction Tool":
         with c1:
             target_scene = st.selectbox("Select Context Scene:", files)
         with c2:
-            target_faction = st.text_input("Target Faction/Character:", placeholder="e.g. The peasantry, /pol/, The Galactic Senate")
+            target_faction = st.text_input("Target Faction/Character:", placeholder="e.g. The peasantry, forum post, The Galactic Senate")
 
         # Format Selection
         c3, c4 = st.columns([1, 1])
