@@ -1171,15 +1171,12 @@ elif page == "⚙️ Settings":
     available_models = get_cached_models()
     
     with st.form("global_settings_form"):
-        st.subheader("🌍 World Mechanics")
+        st.subheader("🌍 World Mechanics & AI Configuration")
         c1, c2 = st.columns(2)
+
         with c1:
-            tz = st.text_input("Timezone", value=curr.get('default_timezone', 'CST'))
-            use_time = st.checkbox("Enable Time System", value=(curr.get('use_time_system', 'true') == 'true'))
-            use_t = st.checkbox("Enable Multiverse / Timelines", value=(curr.get('use_timelines', 'true') == 'true'))
-        
-        with c2:
             st.markdown("**🧠 AI Model Routing**")
+
             safe_default = available_models[0] if available_models else "No Models Detected"
             def get_idx(val, opts): return opts.index(val) if val in opts else 0
             
@@ -1217,6 +1214,12 @@ elif page == "⚙️ Settings":
                 index=get_idx(curr.get('model_retrieval', safe_default), available_models), 
                 help="Handles 'Smart Search' to find relevant Lore/Facts. Speed (Flash) is recommended over raw power."
             )
+
+        with c2:
+            st.markdown("**🌍 World Mechanics**")
+            tz = st.text_input("Timezone", value=curr.get('default_timezone', 'CST'))
+            use_time = st.checkbox("Enable Time System", value=(curr.get('use_time_system', 'true') == 'true'))
+            use_t = st.checkbox("Enable Multiverse / Timelines", value=(curr.get('use_timelines', 'true') == 'true'))
 
         # Dynamic Timeline Logic
         if use_t:
