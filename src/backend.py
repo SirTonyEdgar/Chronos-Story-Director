@@ -362,6 +362,15 @@ def update_fragment(profile_name, frag_id, new_content):
     conn.commit()
     conn.close()
 
+def rename_fragment(profile_name, frag_id, new_filename):
+    """Updates the display label/filename of an existing fragment."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE memory_fragments SET source_filename = ? WHERE id = ?", (new_filename, frag_id))
+    conn.commit()
+    conn.close()
+
 def delete_fragment(profile_name, frag_id):
     """Removes a fragment from the database."""
     paths = get_paths(profile_name)
@@ -401,16 +410,20 @@ def update_project(profile_name, project_index, progress, notes, new_name=None, 
         
         save_world_state(profile_name, state)
 
-def complete_project(profile_name, project_index, custom_lore_text):
-    """Archives a completed project and converts it into a permanent historical Fact."""
+def complete_project(profile_name, project_index, custom_lore_text, target_category="Fact"):
+    """
+    Archives a completed project and converts it into a permanent historical fragment.
+    """
     state = get_world_state(profile_name)
     if "Projects" in state and 0 <= project_index < len(state["Projects"]):
         proj = state["Projects"][project_index]
-        fact_title = f"HISTORY: {proj['Name']}"
-        add_fragment(profile_name, fact_title, custom_lore_text, "Fact")
+        entry_title = f"PROJECT: {proj['Name']}"
+
+        add_fragment(profile_name, entry_title, custom_lore_text, target_category)
+
         del state["Projects"][project_index]
         save_world_state(profile_name, state)
-        return True, f"Project '{proj['Name']}' cemented in history."
+        return True, f"Project '{proj['Name']}' archived to {target_category}."
     return False, "Project not found."
 
 def analyze_state_changes(profile_name, scene_content):

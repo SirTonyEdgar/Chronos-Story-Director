@@ -120,8 +120,8 @@ if st.session_state["active_profile"] is None:
 
 # --- MAIN APPLICATION LAYOUT ---
 profile = st.session_state["active_profile"]
-
-# Sidebar Navigation
+    
+# --- NAVIGATION WITH PERSISTENCE ---
 with st.sidebar:
     st.title("🕰️ Chronos")
     st.caption(f"Profile: **{profile}**")
@@ -132,19 +132,27 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
-    
+
+    url_page = st.query_params.get("page", "🎬 Scene Creator")
+
     nav_options = [
-        "🎬 Scene Creator",
-        "⚔️ War Room",
-        "🕸️ Network Map",
-        "📊 World State Tracker",
-        "📚 Compiler",
-        "🗄️ Knowledge Base",
-        "🗣️ Reaction Tool",
-        "🧠 Co-Author Chat",
-        "⚙️ Settings"
+        "🎬 Scene Creator", "⚔️ War Room", "🕸️ Network Map", 
+        "📊 World State Tracker", "📚 Compiler", "🗄️ Knowledge Base", 
+        "🗣️ Reaction Tool", "🧠 Co-Author Chat", "⚙️ Settings"
     ]
-    page = st.radio("Navigation", nav_options, label_visibility="collapsed")
+    if "active_page" not in st.session_state:
+        st.session_state.active_page = st.query_params.get("page", "🎬 Scene Creator")
+
+    def sync_page_to_url():
+        st.query_params["page"] = st.session_state.active_page
+
+    page = st.radio(
+        "Navigation", 
+        nav_options, 
+        key="active_page", 
+        on_change=sync_page_to_url, 
+        label_visibility="collapsed"
+    )
     
     st.divider()
 
@@ -161,14 +169,20 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v13.1 - Reaction Undo Function")
+    st.caption("v13.2 - Persistent State & Smart Knowledge Overhaul")
 
 # ==========================================
 # MODULE: SCENE CREATOR
 # ==========================================
 if page == "🎬 Scene Creator":
     st.header("🎬 Scene Creator")
-    tab_write, tab_read, tab_edit, tab_manage = st.tabs(["✍️ Write", "📖 Read", "✏️ Edit", "🗑️ Manage"])
+    
+    # Sync Sub-Tab with URL
+    sc_tab_list = ["✍️ Write", "📖 Read", "✏️ Edit", "🗑️ Manage"]
+    url_sc_tab = st.query_params.get("sc_tab", "✍️ Write")
+    
+    # Render Tabs
+    tab_write, tab_read, tab_edit, tab_manage = st.tabs(sc_tab_list)
     
     with tab_write:
         # Load constraints and current state
@@ -422,7 +436,7 @@ elif page == "🕸️ Network Map":
         st.info("Graph is empty. Go to 'Status & Assets' to add Allies.")
 
 # ==========================================
-# MODULE: STATUS & ASSETS
+# MODULE: WORLD STATE TRACKER
 # ==========================================
 elif page == "📊 World State Tracker":
     st.header("📊 World State Tracker")
@@ -437,6 +451,12 @@ elif page == "📊 World State Tracker":
 
     current_state = st.session_state['dashboard_state']
     
+    # --- 🛠️ AUTO-MIGRATION LOGIC ---
+    if not current_state.get("Allies") and "Relations" in current_state:
+        if "Allies" in current_state["Relations"]:
+            current_state["Allies"] = current_state["Relations"]["Allies"]
+            st.toast("Migrated Allies from nested 'Relations' object.", icon="📦")
+
     # --- AI ANALYSIS TOOLS ---
     with st.expander("🤖 AI Batch Analysis Tools", expanded=False):
         st.caption("Select Scenes, Lore, or Plans to auto-extract data (Dates, Allies, Assets).")
@@ -458,13 +478,25 @@ elif page == "📊 World State Tracker":
 
     st.divider()
     st.subheader("🏰 Tracker Dashboard")
+
+    ws_tab_options = ["👤 Protagonist", "🚧 Projects", "🤝 Relations", "💰 Assets", "⚡ Skills", "🌐 Variables", "📝 JSON"]
+
+    if "ws_active_tab" not in st.session_state:
+        st.session_state.ws_active_tab = st.query_params.get("ws_tab", ws_tab_options[0])
+
+    def sync_ws_tab():
+        st.query_params["ws_tab"] = st.session_state.ws_active_tab
     
-    tab_main, tab_projects, tab_allies, tab_assets, tab_skills, tab_vars, tab_raw = st.tabs(
-        ["👤 Protagonist", "🚧 Projects", "🤝 Relations", "💰 Assets", "⚡ Skills", "🌐 Variables", "📝 JSON"]
+    selected_tab = st.segmented_control(
+        "Dashboard Selection", 
+        options=ws_tab_options, 
+        key="ws_active_tab", 
+        on_change=sync_ws_tab,
+        label_visibility="collapsed"
     )
     
     # --- TAB: PROTAGONIST IDENTITY ---
-    with tab_main:
+    if selected_tab == "👤 Protagonist":
         p_data = current_state.get("Protagonist Status", {})
         if not isinstance(p_data, dict): p_data = {}
         
@@ -513,15 +545,17 @@ elif page == "📊 World State Tracker":
             )
             
             if age_mode == "Birth Year (Auto-Calc)":
-                # A. World Clock (Global State)
+                # World Clock (Global State)
                 curr_year = current_state.get("Current_Year", None) 
                 c_y_input = st.number_input("Current World Year", value=curr_year, step=1, help="The current year in your story.")
                 
-                # B. Birth Year
+                # Birth Year
                 b_year_val = p_data.get("Birth_Year", None)
                 birth_year = st.number_input("Character Birth Year", value=b_year_val, step=1)
+
+                p_data["Date of Birth"] = st.text_input("Full Date of Birth", value=p_data.get("Date of Birth", ""), placeholder="e.g. 1984-03-06")
                 
-                # C. The Math (Safety Check)
+                # The Math (Safety Check)
                 if c_y_input is not None and birth_year is not None:
                     calc_age = c_y_input - birth_year
                     st.write(f"**Current Age:** {calc_age}")
@@ -545,7 +579,7 @@ elif page == "📊 World State Tracker":
             st.rerun()
 
     # --- TAB: PROJECTS ---
-    with tab_projects:
+    elif selected_tab == "🚧 Projects":
         projects = current_state.get("Projects", [])
         
         # New Project Creator
@@ -609,12 +643,24 @@ elif page == "📊 World State Tracker":
                         st.success("Saved!")
                         st.rerun()
                     
-                    # Complete
+                    # Complete / Archive Popover
                     with c_arc.popover("✅ Complete", use_container_width=True):
-                        st.caption("Archive as historical fact?")
-                        final_hist = st.text_area("Final Result", value=f"Completed: {new_name}. Specs: {new_specs}", height=100, key=f"hist_{i}")
-                        if st.button("Confirm Completion", key=f"fin_{i}"):
-                            engine.complete_project(profile, i, final_hist)
+                        st.subheader("Archive Project")
+                        st.caption("This moves project details into the Knowledge Base and removes it from the active tracker.")
+                        
+                        # --- Archive Destination Choice ---
+                        archive_target = st.radio(
+                            "Archive to:", 
+                            ["Lore", "Fact"], 
+                            index=1, 
+                            horizontal=True, 
+                            help="Lore is for permanent world-building; Facts are for narrative historical events."
+                        )
+                        
+                        final_hist = st.text_area("Final Summary", value=f"Final Result: {new_name}. Specs: {new_specs}", height=150, key=f"hist_{i}")
+                        
+                        if st.button("Confirm & Archive", key=f"fin_{i}", type="primary", use_container_width=True):
+                            engine.complete_project(profile, i, final_hist, target_category=archive_target)
                             st.balloons()
                             st.rerun()
 
@@ -630,13 +676,12 @@ elif page == "📊 World State Tracker":
                     st.divider()
 
     # --- TAB: RELATIONS ---
-    with tab_allies:
+    elif selected_tab == "🤝 Relations":
         target_list = current_state.get("Allies", [])
         df_allies = pd.DataFrame(target_list)
         
         if df_allies.empty:
             df_allies = pd.DataFrame(columns=["Name", "Relation", "Loyalty", "Notes", "Icon"])
-        
         if "Icon" not in df_allies.columns:
             df_allies["Icon"] = "Ally"
 
@@ -651,7 +696,7 @@ elif page == "📊 World State Tracker":
                     st.caption(name)
                 i += 1
 
-        edited_allies_df = st.data_editor(
+        current_state["Allies"] = st.data_editor(
             df_allies,
             num_rows="dynamic", 
             use_container_width=True,
@@ -659,28 +704,22 @@ elif page == "📊 World State Tracker":
                 "Name": st.column_config.TextColumn("Name", required=True, width="medium"),
                 "Relation": st.column_config.TextColumn("Relation", default="Ally"),
                 "Loyalty": st.column_config.NumberColumn("Loyalty %", min_value=0, max_value=100, default=50),
-                "Icon": st.column_config.SelectboxColumn(
-                    "Map Icon",
-                    options=list(RELATIONSHIP_ICONS.keys()),
-                    required=True,
-                    default="Ally",
-                    help="Select an icon type."
-                ),
+                "Icon": st.column_config.SelectboxColumn("Map Icon", options=list(RELATIONSHIP_ICONS.keys()), required=True, default="Ally"),
                 "Notes": st.column_config.TextColumn("Notes", width="large")
             },
             key="editor_allies"
-        )
-        current_state["Allies"] = edited_allies_df.to_dict(orient="records")
+        ).to_dict(orient="records")
 
     # --- TAB: ASSETS ---
-    with tab_assets:
+    elif selected_tab == "💰 Assets":
         assets_list = current_state.get("Assets", [])
         df_assets = pd.DataFrame(assets_list)
         if df_assets.empty:
-            df_assets = pd.DataFrame(columns=["Asset", "Type", "Status", "Value", "Icon"])
+            df_assets = pd.DataFrame(columns=["Asset", "Type", "Status", "Value", "Notes", "Icon"])
 
         if "Icon" not in df_assets.columns:
             df_assets["Icon"] = "Resource"
+        if "Notes" not in df_assets.columns: df_assets["Notes"] = ""
         
         with st.expander("🖼️ Icon Reference"):
             st.caption("Select an icon to represent this asset on the Network Map.")
@@ -692,44 +731,34 @@ elif page == "📊 World State Tracker":
                     st.caption(name)
                 i += 1
 
-        edited_assets_df = st.data_editor(
+        current_state["Assets"] = st.data_editor(
             df_assets,
             num_rows="dynamic",
-            width="stretch",
+            use_container_width=True,
             column_config={
                 "Asset": st.column_config.TextColumn("Asset Name", required=True),
                 "Type": st.column_config.TextColumn("Type", default="Financial"),
                 "Status": st.column_config.TextColumn("Status", default="Active"),
                 "Value": st.column_config.TextColumn("Value/Power", default="Unknown"),
-                "Icon": st.column_config.SelectboxColumn(
-                    "Map Icon",
-                    options=list(RELATIONSHIP_ICONS.keys()),
-                    required=True,
-                    default="Resource",
-                    help="Select an icon type for the map."
-                )
+                "Notes": st.column_config.TextColumn("Notes", width="large"),
+                "Icon": st.column_config.SelectboxColumn("Map Icon", options=list(RELATIONSHIP_ICONS.keys()), required=True, default="Resource")
             },
             key="editor_assets"
-        )
-        current_state["Assets"] = edited_assets_df.to_dict(orient="records")
+        ).to_dict(orient="records")
 
     # --- TAB: SKILLS ---
-    with tab_skills:
+    elif selected_tab == "⚡ Skills":
         skills = current_state.get("Skills", [])
-        
-        # Data Migration
+
         normalized_skills = []
-        if skills:
+        if isinstance(skills, list):
             for s in skills:
                 if isinstance(s, str):
                     normalized_skills.append({"Skill": s, "Description": ""})
                 elif isinstance(s, dict):
                     normalized_skills.append(s)
-        else:
-            normalized_skills = []
         
-        # Editor Configuration
-        edited_skills = st.data_editor(
+        current_state["Skills"] = st.data_editor(
             normalized_skills,
             num_rows="dynamic",
             use_container_width=True,
@@ -739,14 +768,13 @@ elif page == "📊 World State Tracker":
             },
             key="editor_skills"
         )
-        
-        current_state["Skills"] = edited_skills
 
     # --- TAB: WORLD VARIABLES ---
-    with tab_vars:
+    elif selected_tab == "🌐 Variables":
         st.info("🌐 **Abstract Simulation Layers:** Track abstract forces like 'Heat', 'Corruption', or 'Timeline Stability'. The AI will adjust the story based on these Rules.")
         
-        current_vars = current_state.get("World Variables", [])
+        current_vars = [v for v in current_state.get("World Variables", []) if isinstance(v, dict)]
+        df_vars = pd.DataFrame(current_vars) if current_vars else pd.DataFrame(columns=["Name", "Value", "Mechanic"])
         
         # Normalize Data (Handle legacy lists)
         normalized_vars = []
@@ -760,22 +788,20 @@ elif page == "📊 World State Tracker":
             df_vars = pd.DataFrame(columns=["Name", "Value", "Mechanic"])
 
         # Render Editor
-        edited_vars = st.data_editor(
+        current_state["World Variables"] = st.data_editor(
             df_vars,
             num_rows="dynamic",
             use_container_width=True,
             column_config={
                 "Name": st.column_config.TextColumn("Variable Name", required=True, width="medium"),
                 "Value": st.column_config.TextColumn("Current State", width="small"),
-                "Mechanic": st.column_config.TextColumn("Logic / Consequence Rule", width="large", help="Tell the AI how this variable affects the story.")
+                "Mechanic": st.column_config.TextColumn("Logic / Consequence Rule", width="large")
             },
             key="editor_vars"
-        )
-        
-        current_state["World Variables"] = edited_vars.to_dict(orient="records")
+        ).to_dict(orient="records")
 
     # --- TAB: RAW JSON ---
-    with tab_raw:
+    elif selected_tab == "📝 JSON":
         raw_text = st.text_area("Raw JSON", value=json.dumps(current_state, indent=4), height=400)
         if st.button("Override from JSON"):
             try:
@@ -850,88 +876,117 @@ elif page == "📚 Compiler":
 # ==========================================
 elif page == "🗄️ Knowledge Base":
     st.header("🗄️ Knowledge Base")
-    tab_lore, tab_rules, tab_plan, tab_fact, tab_spoiler = st.tabs(
-        ["📜 Lore", "📏 Rules", "🗺️ Plans", "📌 Facts", "🚫 Spoilers"]
+
+    kb_tab_options = ["📜 Lore", "📏 Rules", "🗺️ Plans", "📌 Facts", "🚫 Spoilers"]
+
+    if "kb_active_tab" not in st.session_state:
+        url_val = st.query_params.get("tab", "📜 Lore")
+        st.session_state.kb_active_tab = url_val if url_val in kb_tab_options else "📜 Lore"
+
+    def sync_kb_tab():
+        st.query_params["tab"] = st.session_state.kb_active_tab
+
+    selected_kb = st.segmented_control(
+        "Knowledge Category", 
+        options=kb_tab_options, 
+        key="kb_active_tab", 
+        on_change=sync_kb_tab,
+        label_visibility="collapsed"
     )
 
-    def render_editor(doc_type, label):
-        """Standardized editor component for Knowledge Base fragments."""
+    def render_smart_editor(doc_type, label, icon="📜", help_text=""):
+        """Standardized editor with search, rename, height control, and custom hints."""
+        if help_text:
+            st.info(help_text)
+
         frags = engine.get_fragments(profile, doc_type)
-        if frags:
-            for fid, fname, cont, _ in frags:
-                with st.expander(f"[{fid}] {fname}"):
-                    with st.form(f"e_{fid}"):
-                        txt = st.text_area("Content", value=cont, height=200)
-                        c1, c2 = st.columns([0.2, 0.8])
-                        if c1.form_submit_button("Update"): 
-                            engine.update_fragment(profile, fid, txt)
+
+        s_query = st.text_input(
+            f"Search {label}", 
+            placeholder=f"Filter {label} content...", 
+            key=f"search_{doc_type}"
+        )
+        
+        filtered = [f for f in frags if s_query.lower() in f[2].lower()] if s_query else frags
+
+        with st.container(height=500):
+            if not filtered:
+                st.caption("No matching fragments found.")
+            for fid, fname, cont, _ in filtered:
+                with st.expander(f"{icon} {fname}"):
+                    with st.form(f"edit_{doc_type}_{fid}"):
+                        new_name = st.text_input("Label", value=fname)
+                        new_cont = st.text_area("Content", value=cont, height=300)
+                        
+                        c1, c2 = st.columns(2)
+                        if c1.form_submit_button("💾 Save Changes", use_container_width=True):
+                            engine.update_fragment(profile, fid, new_cont)
+                            engine.rename_fragment(profile, fid, new_name)
+                            st.success("Updated!")
                             st.rerun()
-                        if c2.form_submit_button("Delete"): 
+                        if c2.form_submit_button("🗑️ Delete", use_container_width=True):
                             engine.delete_fragment(profile, fid)
                             st.rerun()
+        
         st.divider()
-        
-        # Uploader Section
-        up = st.file_uploader(f"Upload {label}", type=["txt", "pdf"], key=f"u_{doc_type}")
-        if up and st.button(f"Import {up.name}", key=f"i_{doc_type}"):
-            content = None
-            if up.type == "text/plain": 
-                content = up.getvalue().decode("utf-8")
-            elif up.type == "application/pdf":
-                try:
-                    pdf = PdfReader(io.BytesIO(up.getvalue()))
-                    content = "".join([page.extract_text() + "\n" for page in pdf.pages])
-                except Exception as e:
-                    st.error(f"PDF Error: {e}")
-            
-            if content:
-                engine.add_fragment(profile, up.name, content, doc_type)
-                st.success(f"Imported {up.name}")
-                st.rerun()
-        
-        # Manual Entry Section
-        with st.form(f"a_{doc_type}"):
+        with st.form(f"add_new_{doc_type}_manual", clear_on_submit=True):
+            st.caption(f"Add New {label}")
             n = st.text_input("Title")
-            c = st.text_area("Content")
-            if st.form_submit_button("Add New"): 
-                engine.add_fragment(profile, n, c, doc_type)
-                st.rerun()
+            c = st.text_area("Content", height=150)
+            if st.form_submit_button("Create", type="primary", use_container_width=True): 
+                if c:
+                    engine.add_fragment(profile, n if n else "Untitled", c, doc_type)
+                    st.rerun()
+                else:
+                    st.error("Content cannot be empty.")
 
-    with tab_lore: render_editor("Lore", "Lore")
+    if selected_kb == "📜 Lore":
+        render_smart_editor(
+            "Lore", "Lore", "📜", 
+            help_text="📖 **Story Bible:** Permanent background information..."
+        )
     
-    with tab_rules: 
-        st.info("📜 **World Laws:** Upload RPG Rulebooks or Physics constraints. The AI treats these as strict instructions.")
-        render_editor("Rulebook", "Rules")
+    elif selected_kb == "📏 Rules":
+        render_smart_editor(
+            "Rulebook", "Rules", "📏", 
+            help_text="📏 **World Laws:** RPG Rulebooks or Narrative 'Laws'..."
+        )
     
-    with tab_plan: render_editor("Plan", "Plan")
-    
-    with tab_fact:
-        frags = engine.get_fragments(profile, "Fact")
-        for fid, fname, cont, _ in frags:
-            c1, c2 = st.columns([0.9, 0.1])
-            c1.info(cont)
-            if c2.button("X", key=f"df_{fid}"): 
-                engine.delete_fragment(profile, fid)
-                st.rerun()
-        with st.form("af"):
-            nf = st.text_input("New Fact")
-            if st.form_submit_button("Add"): 
-                engine.add_fragment(profile, "UI", nf, "Fact")
-                st.rerun()
+    elif selected_kb == "🗺️ Plans":
+        render_smart_editor(
+            "Plan", "Plans", "🗺️", 
+            help_text="🗺️ **Strategic Goals:** Future plot points or mission objectives..."
+        )
+
+    elif selected_kb == "📌 Facts":
+        render_smart_editor(
+            "Fact", "Facts", "📌", 
+            help_text="📌 **Established Truths:** Immediate narrative facts..."
+        )
                 
-    with tab_spoiler:
+    elif selected_kb == "🚫 Spoilers":
+        st.error("🚫 **Banned Content:** Words or plot points the AI must NEVER reveal yet.")
+        
         frags = engine.get_fragments(profile, "Spoiler")
+        if not frags:
+            st.info("No active spoilers.")
+            
         for fid, fname, cont, _ in frags:
-            c1, c2 = st.columns([0.9, 0.1])
-            c1.error(cont)
-            if c2.button("X", key=f"ds_{fid}"): 
-                engine.delete_fragment(profile, fid)
-                st.rerun()
-        with st.form("as"):
-            ns = st.text_input("Banned Term")
-            if st.form_submit_button("Ban"): 
-                engine.add_fragment(profile, "UI", ns, "Spoiler")
-                st.rerun()
+            c1, c2 = st.columns([0.85, 0.15])
+            with c1:
+                st.markdown(f"**STOP:** `{cont}`")
+            with c2:
+                if st.button("🗑️", key=f"ds_{fid}", help="Remove ban"): 
+                    engine.delete_fragment(profile, fid)
+                    st.rerun()
+                    
+        st.divider()
+        with st.form("add_new_spoiler", clear_on_submit=True):
+            ns = st.text_input("New Banned Term / Secret")
+            if st.form_submit_button("Ban Term", type="primary", use_container_width=True): 
+                if ns:
+                    engine.add_fragment(profile, "Spoiler_Alert", ns, "Spoiler")
+                    st.rerun()
 
 # ==========================================
 # MODULE: REACTION TOOL
