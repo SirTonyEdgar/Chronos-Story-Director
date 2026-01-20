@@ -88,6 +88,9 @@ RELATIONSHIP_ICONS = {
     "Subordinate/Vassal": "human.png",
     "Target": "target.png",
     "Resource/Item": "treasure-chest.png",
+    "Vehicle/Transport": "wheel.png",      
+    "Infrastructure/Base": "infrastructure.png",
+    "Organization/Corp": "briefcase.png",
     "Weapon": "sword.png",
     "Technology": "technology.png",
     "Magic": "potion.png",
@@ -685,7 +688,8 @@ elif page == "📊 World State Tracker":
                             ["Lore", "Fact"], 
                             index=1, 
                             horizontal=True, 
-                            help="Lore = Universal World History. Fact = A specific historical event."
+                            help="Lore is for world building. Fact is for a specific historical event.",
+                            key=f"archive_radio_{i}"
                         )
                         
                         final_hist = st.text_area("Final Summary", value=f"Final Result: {new_name}. Specs: {new_specs}", height=150, key=f"hist_{i}")
