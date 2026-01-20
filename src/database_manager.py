@@ -5,6 +5,7 @@ A command-line tool for bulk importing text and PDF documents into
 the Chronos RAG database.
 
 Copyright (c) 2025 SirTonyEdgar
+Licensed under the MIT License.
 """
 
 import os
@@ -34,18 +35,21 @@ def ingest_profile_data(profile_name: str):
     paths = engine.get_paths(profile_name)
     db_path = paths['db']
     
+    # Define Source Directories
     base_input = os.path.dirname(paths['lore'])
     source_dirs = {
         "Lore": paths['lore'],
         "Plan": os.path.join(base_input, "plans"),
-        "Rulebook": os.path.join(base_input, "rules")
+        "Rulebook": os.path.join(base_input, "rules"),
+        "Fact": os.path.join(base_input, "facts"),
+        "Spoiler": os.path.join(base_input, "spoilers")
     }
 
-    # Auto-create directories
+    # Auto-create directories if they don't exist
     for d in source_dirs.values():
         os.makedirs(d, exist_ok=True)
 
-    print(f"\n--- 📂 INGESTING LORE & RULES: {profile_name} ---")
+    print(f"\n--- 📂 INGESTING KNOWLEDGE BASE: {profile_name} ---")
 
     try:
         conn = sqlite3.connect(db_path, timeout=30)
@@ -66,8 +70,8 @@ def ingest_profile_data(profile_name: str):
         for filepath in files:
             filename = os.path.basename(filepath)
             
-            # Idempotency Check
-            c.execute("SELECT id FROM memory_fragments WHERE source_filename = ?", (filename,))
+            # Idempotency Check (Prevent duplicates)
+            c.execute("SELECT id FROM memory_fragments WHERE source_filename = ? AND type = ?", (filename, doc_type))
             if c.fetchone(): continue
 
             content = None
@@ -131,12 +135,15 @@ def backfill_reactions(profile_name: str):
             parts = re.split(r'>>> REACTION:', content)
             
             for part in parts[1:]:
+                # Regex matches the v13+ format: "Faction Name | Style <<<"
                 header_match = re.search(r'\s*(.*?) \|\s*(.*?) <<<', part)
                 if header_match:
                     faction = header_match.group(1).strip()
                     
+                    # Clean up the body text
                     body = re.sub(r'\s*(.*?) \|\s*(.*?) <<<(\n✨.*)?', '', part, count=1).strip()
 
+                    # Prevent duplicate entries
                     c.execute("SELECT id FROM faction_memory WHERE source_scene = ? AND faction_name = ?", (filename, faction))
                     if not c.fetchone():
                         c.execute("INSERT INTO faction_memory (faction_name, reaction_text, source_scene) VALUES (?, ?, ?)",
@@ -151,7 +158,7 @@ def backfill_reactions(profile_name: str):
 def main():
     while True:
         print("\n========================================")
-        print("   CHRONOS DATA MANAGER (v12.8)")
+        print("   CHRONOS DATA MANAGER (v13.2)")
         print("========================================")
         
         profiles = engine.list_profiles()
@@ -175,7 +182,7 @@ def main():
             target_profile = profiles[idx]
             
             print(f"\nSelected: {target_profile}")
-            print("1. Ingest Lore/Rules/Plans (Standard)")
+            print("1. Ingest All Knowledge (Lore, Rules, Plans, Facts, Spoilers)")
             print("2. Backfill Reaction Memory (Import from Scenes)")
             
             op = input("Select Operation [1-2]: ")

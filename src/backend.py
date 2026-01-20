@@ -16,6 +16,7 @@ import json
 import sqlite3
 import shutil
 import datetime
+import smart_retrieval
 from io import BytesIO
 from typing import TypedDict, Optional, List, Dict, Any
 from dotenv import load_dotenv
@@ -119,6 +120,33 @@ def get_next_chapter_number(profile_name: str) -> int:
             except: pass
     return max_ch + 1
 
+def get_global_context(profile_name: str):
+    """
+    Retrieves the 'Immutable' context layers that must be present in every generation cycle.
+    1. Rules: The physics/magic/laws of the world.
+    2. Plan: The strategic direction of the story.
+    3. Spoilers: Critical secrets to protect.
+    """
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=30)
+    c = conn.cursor()
+    
+    # World Rules (Always Active)
+    c.execute("SELECT content FROM memory_fragments WHERE type='Rulebook'")
+    rules = "\n\n".join([r[0] for r in c.fetchall()])
+    
+    # Strategic Plan (Always Active)
+    c.execute("SELECT content FROM memory_fragments WHERE type='Plan' LIMIT 1")
+    row = c.fetchone()
+    plan = row[0] if row else "NO PLAN ESTABLISHED."
+    
+    # Spoilers (Global Safety)
+    c.execute("SELECT content FROM memory_fragments WHERE type='Spoiler'")
+    spoilers = [r[0] for r in c.fetchall()]
+    
+    conn.close()
+    return rules, plan, spoilers
+
 class MockResponse:
     """Simulation of an LLM response object for fallback scenarios."""
     def __init__(self, text):
@@ -142,7 +170,8 @@ def get_story_settings(profile_name: str) -> dict:
         "timeline_b_name": "Timeline Prime", "timeline_b_desc": "Present",
         "model_scene": "gemini-2.5-pro",
         "model_chat": "gemini-2.5-flash",
-        "model_reaction": "gemini-2.5-flash"
+        "model_reaction": "gemini-2.5-flash",
+        "model_retrieval": "gemini-2.5-flash"
     }
     paths = get_paths(profile_name)
     try:
@@ -169,7 +198,8 @@ def get_llm(profile_name: str, task_type: str = "scene", settings: Optional[dict
         "scene": "model_scene",
         "chat": "model_chat",
         "reaction": "model_reaction",
-        "analysis": "model_analysis"
+        "analysis": "model_analysis",
+        "retrieval": "model_retrieval"
     }
     target_key = model_map.get(task_type, "model_chat")
     model_name = settings.get(target_key, "gemini-2.5-flash")
@@ -296,6 +326,28 @@ def update_story_setting(profile_name: str, key: str, value: str):
     c.execute("INSERT OR REPLACE INTO story_settings (key, value) VALUES (?, ?)", (key, str(value)))
     conn.commit()
     conn.close()
+
+def get_content_by_ids(profile_name, id_list):
+    """Retrieves full text content for a specific list of fragment IDs."""
+    if not id_list: return ""
+    
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    
+    # Safe parameterized query for a list
+    placeholders = ','.join(['?'] * len(id_list))
+    query = f"SELECT content FROM memory_fragments WHERE id IN ({placeholders})"
+    
+    try:
+        c.execute(query, id_list)
+        rows = c.fetchall()
+        return "\n\n".join([r[0] for r in rows])
+    except Exception as e:
+        print(f"Fetch Error: {e}")
+        return ""
+    finally:
+        conn.close()
 
 # --- RAG & CONTEXT AGGREGATION ---
 
@@ -504,20 +556,39 @@ def analyze_state_changes(profile_name, scene_content):
 
 def draft_scene(state: StoryState):
     """
-    Workflow Node 1: Narrative Drafting.
-    Generates the initial scene prose based on aggregated context, laws, and user brief.
-    Includes Conditional Privacy (Fog of War) logic if enabled.
+    Workflow Node 1: Narrative Drafting (v14.0 Smart Retrieval).
+    
+    Instead of dumping the entire database into the context, this node:
+    1. Fetches Global Context (Rules, Plans).
+    2. Consults the 'Librarian' (Smart Retrieval) to identify relevant Lore & Facts based on the Scene Brief.
+    3. Ingests only the specific documents needed for this exact scene.
     """
     profile = state['profile_name']
-    lore, rules, plan, facts, db_spoilers = get_full_context_data(profile)
+    brief = state['scene_brief']
     settings = get_story_settings(profile)
     state_tracking = get_world_state(profile)
     
-    # Dynamic context injection (Spoilers & Banned Words)
+    # Retrieve Global Context
+    rules, plan, db_spoilers = get_global_context(profile)
+    
+    # Smart Retrieval
+    print(f"  [Librarian] Scanning Knowledge Base for: '{brief[:50]}...'")
+    relevant_ids = smart_retrieval.get_relevant_fragment_ids(
+        profile, 
+        user_query=brief, 
+        doc_types=["Lore", "Fact"]
+    )
+    
+    # Fetch the actual content for the selected IDs
+    smart_context_str = get_content_by_ids(profile, relevant_ids)
+    if not smart_context_str:
+        smart_context_str = "No specific historical records found for this scene."
+
+    # Dynamic Spoiler Injection
     dynamic_spoilers = extract_dynamic_spoilers(plan, state['year'], profile, settings=settings) 
     all_banned = list(set(db_spoilers + dynamic_spoilers))
     
-    # Header generation (Date/Time)
+    # Header Generation (Date/Time)
     use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
     header = ""
     if use_time_system:
@@ -525,16 +596,14 @@ def draft_scene(state: StoryState):
         if state['time_str']: 
             header += f"\n{state['time_str']}"
     
-    # Multiverse/Timeline logic
+    # Multiverse/Timeline Logic
     timeline_section = ""
     if settings.get('use_timelines', 'true').lower() == 'true':
         timelines_list = state_tracking.get("Timelines", [])
         if timelines_list:
             timeline_section = "ACTIVE TIMELINES (MULTIVERSE):\n"
             for t in timelines_list:
-                t_name = t.get("Name", "Unknown")
-                t_desc = t.get("Description", "No description")
-                timeline_section += f"- {t_name}: {t_desc}\n"
+                timeline_section += f"- {t.get('Name', 'Unknown')}: {t.get('Description', '')}\n"
     
     # World Variables Logic
     variables_section = ""
@@ -544,15 +613,14 @@ def draft_scene(state: StoryState):
         for v in world_vars:
             variables_section += f"- {v.get('Name', 'Var')}: {v.get('Value', '0')} (RULE: {v.get('Mechanic', '')})\n"
 
-    # Conditional Privacy Logic
+    # Privacy Protocol (Fog of War)
     privacy_protocol = ""
     if state.get('use_fog_of_war', False):
         privacy_protocol = """
         *** PRIVACY & FOG OF WAR PROTOCOL (CRITICAL) ***
         You are responsible for marking "Secret Information" for the simulation engine.
-        
-        RULE: Whenever the characters are in a location or context where the GENERAL PUBLIC / MEDIA cannot see or hear them (e.g., inside a private home, a moving car, a secure bunker, a whispered conversation, or internal monologue), you MUST wrap that specific section of text in [[PRIVATE]] ... [[/PRIVATE]] tags.
-        
+        RULE: Whenever characters are in a location/context where the GENERAL PUBLIC cannot see/hear them 
+        (e.g., private homes, whispered conversations, internal monologue, a moving car, a secure bunker, a whispered conversation, or internal monologue), wrap that section in [[PRIVATE]] ... [[/PRIVATE]] tags.
         EXAMPLE:
         The two men walked through the park. "Nice day," JFK said.
         [[PRIVATE]]
@@ -560,6 +628,7 @@ def draft_scene(state: StoryState):
         [[/PRIVATE]]
         """
 
+    # Construct Final Prompt
     prompt = f"""
     ROLE: Novelist (Third Person Limited).
     CHARACTER: {settings['protagonist']}.
@@ -570,26 +639,25 @@ def draft_scene(state: StoryState):
     {privacy_protocol}
     {variables_section}
     
-    *** STORY BIBLE (LORE) ***
-    {lore}
+    *** STRATEGIC PLAN (THE FUTURE) ***
+    {plan}
+
+    *** RELEVANT LORE & HISTORY (SMART RETRIEVAL) ***
+    {smart_context_str}
 
     *** WORLD STATE & PROJECTS ***
     {json.dumps(state_tracking)}
     
     *** FORMATTING ***
     {header}
-    
     (Start prose below header. NO Title in body. NO 'But/And' starts).
     
     {timeline_section}
     
-    *** FACTS ***
-    {facts}
-    
-    *** BANNED ***
+    *** BANNED CONCEPTS (SPOILERS) ***
     [{", ".join(all_banned)}]
     
-    *** CONTEXT ***
+    *** NARRATIVE CONTEXT (RECENT) ***
     {state['recent_context']}
     
     === MISSION ===
@@ -598,6 +666,7 @@ def draft_scene(state: StoryState):
     CRITIQUE: {state['critique_notes']}
     """
     
+    # Execute Generation
     llm = get_llm(profile, "scene", settings=settings)
     response = llm.invoke([HumanMessage(content=prompt)])
     
@@ -794,80 +863,80 @@ def run_chat_query(profile_name, user_input):
 
 def generate_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard", custom_instructions=""):
     """
-    Simulates a faction's reaction to a scene.
-    Supports 'Fog of War' (redacting private content) and custom formatting styles.
+    Simulates a faction's reaction to a scene using Smart Retrieval.
+    
+    Optimizations:
+    1. Alias Resolution: Maps nicknames ("The Spies") to database keys ("Guild of Whispers").
+    2. Smart Context: Fetches only Lore/Facts relevant to THIS faction and THIS scene.
     """
-    lore, rules, plan, facts, spoilers = get_full_context_data(profile_name)
+    # Alias Resolution
+    true_faction = smart_retrieval.resolve_faction_alias(profile_name, faction)
+    print(f"  [Identity] Resolved '{faction}' -> '{true_faction}'")
+
+    # Retrieve Global Context
+    rules, plan, _ = get_global_context(profile_name)
     state = get_world_state(profile_name)
     content = read_file_content(profile_name, filename)
-    past_reactions = get_recent_faction_memory(profile_name, faction)
     
-    # Content Sanitization
+    # Retrieve Faction Voice (Tone History)
+    past_reactions = get_recent_faction_memory(profile_name, true_faction)
+    
+    # Smart Retrieval (Contextual Grounding)
+    query = f"Faction '{true_faction}' reacting to scene content: {content[:800]}..."
+    
+    relevant_ids = smart_retrieval.get_relevant_fragment_ids(
+        profile_name, 
+        user_query=query, 
+        doc_types=["Lore", "Fact", "Rulebook"]
+    )
+    smart_facts = get_content_by_ids(profile_name, relevant_ids)
+    
+    # Content Sanitization (Fog of War)
     if public_only:
-        # Redact multi-line private blocks
         pattern = r"\[\[PRIVATE\]\].*?\[\[/PRIVATE\]\]"
         content = re.sub(pattern, "[...INTERNAL/PRIVATE SCENE REDACTED...]", content, flags=re.DOTALL | re.IGNORECASE)
-        
-        # Redact inline private tags
         content = re.sub(r"\[PRIVATE:.*?\]", "[REDACTED]", content)
 
     # Context Instruction Layer
     knowledge_instr = (
-        "You are reading the unredacted scene. "
-        "HOWEVER, you must act strictly as the Target Faction. "
-        "DO NOT reference the internal thoughts, feelings, or private monologues of other characters "
-        "unless they were explicitly spoken aloud or are obvious from body language. "
-        "React ONLY to observable actions, dialogue, and reasonable deductions."
+        "You are reading the unredacted scene. HOWEVER, act strictly as the Target Faction. "
+        "DO NOT reference internal thoughts of others. React ONLY to observable actions."
     )
-
     if public_only:
         knowledge_instr = (
-            "CRITICAL: You are an EXTERNAL OBSERVER. "
-            "The scene text has had private interactions REDACTED. "
-            "You DO NOT know what happened in the redacted sections. "
-            "You ONLY know what was physically visible in public. "
-            "Do NOT guess the redacted content accurately. Speculate wildly or ignore it."
+            "CRITICAL: You are an EXTERNAL OBSERVER. Private interactions have been REDACTED. "
+            "You DO NOT know what happened in the redacted sections. Do NOT guess accurately."
         )
 
     # Prompt Construction
     prompt = f"""
     ROLE: Narrative Simulator (Grounded in History & State).
-    TARGET FACTION: {faction}
+    TARGET FACTION: {true_faction}
     
-    *** WORLD STATE (FOR CONSISTENCY) ***
+    *** WORLD STATE ***
     Current Year: {state.get('Current_Year', 'Unknown')}
     Character Data: {json.dumps(state.get('Allies', []))}
-    Protagonist Status: {json.dumps(state.get('Protagonist Status', {}))}
     
-    *** VOICE & TONE REFERENCE (PREVIOUS REACTIONS) ***
-    Use these past logs to mimic the character's specific speech patterns, slang, and attitude:
+    *** VOICE & TONE REFERENCE ***
+    Use these past logs to mimic specific speech patterns:
     {past_reactions}
 
-    *** ESTABLISHED FACTS & LORE ***
-    {facts}
-    {lore[:2000]}
+    *** RELEVANT INTELLIGENCE (SMART RETRIEVAL) ***
+    {smart_facts}
 
     *** MISSION ***
-    Write a reaction to the SCENE provided below from the perspective of the Target Faction.
+    Write a reaction to the SCENE provided below.
     
     CRITICAL CONSISTENCY RULES:
-    1. AGE CHECK: Check 'Allies' or 'Protagonist' data for ages. If a character is a child (e.g., 7 or 10), they MUST use age-appropriate vocabulary and behavior.
-    2. MEMORY ESCALATION: Review the 'Allies' notes. If this faction has reacted before, this new reaction should build on or escalate their previous opinion.
+    1. AGE CHECK: Check character data. Children must sound like children.
+    2. MEMORY ESCALATION: Build upon previous reactions found in Voice Reference.
 
-    *** ADDITIONAL USER INSTRUCTIONS ***
-    {custom_instructions if custom_instructions else "Follow standard personality and lore for this faction."}
+    *** ADDITIONAL INSTRUCTIONS ***
+    {custom_instructions if custom_instructions else "Follow standard personality and lore."}
 
-    *** FORMATTING & TONE ***
-    The output must strictly follow this format/medium: 
-    "{format_style}"
-    
+    *** FORMATTING ***
+    Format: "{format_style}"
     (Adopt the slang, structure, and limitations of this medium).
-
-    *** STRICT OUTPUT RULES (NO MARKDOWN) ***
-    1. DO NOT output metadata lines like "Format:", "Perspective:", or "Parties:".
-    2. DO NOT use bolding (double stars like **Name**). Use plain text (e.g. NAME:). 
-    3. Location/Time headers are permitted if standard for the format (e.g. Script), but keep them clean/minimal.
-    4. Start directly with the content.
     
     *** KNOWLEDGE CONSTRAINTS ***
     {knowledge_instr}
@@ -880,13 +949,12 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     res = llm.invoke([HumanMessage(content=prompt)]).content
     
     if "REFUSAL" in res: return False, res
-    
-    save_faction_reaction(profile_name, faction, res, filename)
 
-    # Result Persistence
+    save_faction_reaction(profile_name, true_faction, res, filename)
+
     paths = get_paths(profile_name)
     clean_style = format_style.split("->")[-1].strip()
-    header = f"\n\n>>> REACTION: {faction} | {clean_style} <<<\n"
+    header = f"\n\n>>> REACTION: {true_faction} | {clean_style} <<<\n"
     
     with open(os.path.join(paths['output'], filename), "a", encoding="utf-8") as f:
         f.write(header + res + "\n")
@@ -1086,11 +1154,10 @@ def compile_formatted_manuscript(profile_name: str, selected_files: List[str]) -
     
     # --- HELPER: TEXT CLEANER ---
     def clean_manuscript_text(text):
-        # 1. Remove System Tags (Privacy)
-        # We want the text, just not the tags.
+        # Remove System Tags (Privacy)
         text = text.replace("[[PRIVATE]]", "").replace("[[/PRIVATE]]", "")
         
-        # 2. Sanitize Smart Characters for PDF (Latin-1 safe)
+        # Sanitize Smart Characters for PDF (Latin-1 safe)
         replacements = {
             '\u201c': '"', '\u201d': '"',  # Smart double quotes
             '\u2018': "'", '\u2019': "'",  # Smart single quotes

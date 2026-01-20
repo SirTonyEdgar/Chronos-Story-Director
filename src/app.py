@@ -169,7 +169,7 @@ with st.sidebar:
                     mime="application/zip"
                 )
 
-    st.caption("v13.2 - Persistent State & Smart Knowledge Overhaul")
+    st.caption("v14.0 - Smart Retrieval")
 
 # ==========================================
 # MODULE: SCENE CREATOR
@@ -1211,6 +1211,13 @@ elif page == "⚙️ Settings":
                 help="Handles the deep reasoning for War Room Simulations and World State Analysis."
             )
 
+            m_retrieval = st.selectbox(
+                "Retrieval / Librarian Engine", 
+                available_models, 
+                index=get_idx(curr.get('model_retrieval', safe_default), available_models), 
+                help="Handles 'Smart Search' to find relevant Lore/Facts. Speed (Flash) is recommended over raw power."
+            )
+
         # Dynamic Timeline Logic
         if use_t:
             st.divider()
@@ -1242,6 +1249,7 @@ elif page == "⚙️ Settings":
             engine.update_story_setting(profile, 'model_chat', m_chat)
             engine.update_story_setting(profile, 'model_reaction', m_react)
             engine.update_story_setting(profile, 'model_analysis', m_analysis)
+            engine.update_story_setting(profile, 'model_retrieval', m_retrieval)
             
             # Update Timelines in JSON
             if use_t:
