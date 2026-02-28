@@ -1,8 +1,8 @@
 # 🕰️ Chronos Story Director
 
-**Chronos Story Director** is a sophisticated RAG-based storytelling engine designed to orchestrate LLMs (Gemini, GPT-4) for long-form narrative generation. It tracks world state, manages complex lore, and provides a "War Room" for strategic simulations.
+**Chronos Story Director** is a sophisticated RAG-based storytelling engine designed to orchestrate LLMs (Gemini, GPT-4, Claude) for long-form narrative generation. It tracks world state, manages complex lore, and provides a "War Room" for strategic simulations.
 
-![Version](https://img.shields.io/badge/version-14.2-blue)
+![Version](https://img.shields.io/badge/version-15.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## ✨ Features
@@ -33,23 +33,41 @@
 - ```git clone https://github.com/SirTonyEdgar/Chronos-Story-Director.git```
 - ```cd Chronos-Story-Director```
 
-### 2. Install Dependencies
+### 2. Backend Setup (Python)
+# Create a virtual environment
+```python -m venv venv```
+
+# Activate virtual environment
+# Windows:
+```venv\Scripts\activate```
+# Mac/Linux:
+```source venv/bin/activate```
+
+# Install dependencies
 ```pip install -r requirements.txt```
 
 ### 3. Setup API Keys
 Create a file named .env in the root directory and add your API keys:
 - ```GOOGLE_API_KEY=your_gemini_key_here```
-- ```OPENAI_API_KEY=your_openai_key_here```  # Optional
+- ```OPENAI_API_KEY=your_openai_key_here```
+- ```ANTHROPIC_API_KEY=your_claude_key```
 
-## 🚀 Usage
-Run the interface from your terminal:
-```streamlit run src/app.py```
+### 4. Frontend Setup (React/Node)
+Open a new terminal window in the project root:
+- ```cd frontend```
+- ```npm install```
 
-## 📂 Project Structure
-- ```src/app.py```: The Streamlit frontend interface.
-- ```src/backend.py```: The core LangGraph engine and logic.
-- ```src/database_manager.py```: CLI tool for bulk ingesting lore/PDFs.
-- ```profiles/```: Stores your local story data (ignored by git).
+## 🚀 Running Chronos
+You will need two terminal windows running simultaneously to power the engine.
+# Terminal 1: Start the Backend API:
+- ```# Ensure your python virtual environment is active```
+- ```uvicorn src.api:app --reload --port 8000```
+
+# Terminal 2: Start the React UI
+- ```cd frontend```
+- ```npm run dev```
+
+Once both are running, open your browser and navigate to http://localhost:5173 (or the port provided by Vite/React) to access the Story Director.
 
 ## 📄 License
 This project is licensed under the MIT License - see the source header for details.
