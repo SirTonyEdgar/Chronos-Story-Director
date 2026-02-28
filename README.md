@@ -18,14 +18,18 @@
 - **🌌 Multiverse Support:** Manage branching timelines and parallel realities without database corruption.
 - **🎭 Identity Manager:** Handle aliases, secret identities, and changing narrative personas.
 
-<img width="1440" height="639" alt="image" src="https://github.com/user-attachments/assets/0f6f2f2b-c830-4db1-803c-623d9fff5a89" />
-<img width="1449" height="822" alt="image" src="https://github.com/user-attachments/assets/8f3c158c-bf9d-4001-b2cb-d18b0101e603" />
-<img width="1432" height="849" alt="image" src="https://github.com/user-attachments/assets/eb59a465-024b-4464-a098-8f0901e84552" />
-<img width="1431" height="875" alt="image" src="https://github.com/user-attachments/assets/c7e48085-e1bf-48e7-b9a3-2a8b79985b63" />
-<img width="1452" height="494" alt="image" src="https://github.com/user-attachments/assets/01f85c8f-5cf9-417d-8b2f-2aff4d14d551" />
-<img width="1436" height="845" alt="image" src="https://github.com/user-attachments/assets/999f8932-04ac-4c24-afba-ffe62ceece8a" />
-<img width="1446" height="761" alt="image" src="https://github.com/user-attachments/assets/379a30b2-369d-46f8-9139-f0bb8031115b" />
-<img width="1437" height="865" alt="image" src="https://github.com/user-attachments/assets/33f5f3a0-00e4-4368-9ad8-12cfa9dde0b5" />
+<img width="1047" height="850" alt="image" src="https://github.com/user-attachments/assets/9238da8a-993a-42dd-9e09-14381cb70e3b" />
+<img width="1063" height="860" alt="image" src="https://github.com/user-attachments/assets/7612972a-9286-4f95-a55c-e6a22938466f" />
+<img width="1046" height="809" alt="image" src="https://github.com/user-attachments/assets/a5285f59-c2c0-4177-a7d6-1668ab74cc49" />
+<img width="1057" height="811" alt="image" src="https://github.com/user-attachments/assets/56b86856-18a7-4301-a548-c67196e0c54f" />
+<img width="997" height="894" alt="image" src="https://github.com/user-attachments/assets/106d286a-32fb-4efa-bda0-49836fdb1320" />
+<img width="1564" height="887" alt="image" src="https://github.com/user-attachments/assets/3c1f3534-c294-448c-acec-123d394d34ae" />
+<img width="1400" height="899" alt="image" src="https://github.com/user-attachments/assets/2af14518-1bc4-45a5-bb90-19761c75ff81" />
+<img width="1468" height="909" alt="image" src="https://github.com/user-attachments/assets/eb3e78b0-b933-47d9-94e5-bd12c1b3a671" />
+<img width="1877" height="925" alt="image" src="https://github.com/user-attachments/assets/68e903a5-cb32-450f-86f7-0bb31773dd23" />
+<img width="1874" height="927" alt="image" src="https://github.com/user-attachments/assets/4a91cdff-e2c2-45d2-bb93-84acb8b83e79" />
+<img width="1887" height="919" alt="image" src="https://github.com/user-attachments/assets/f734c298-9ff2-4b5c-9a2a-84a4b55b7843" />
+<img width="1864" height="804" alt="image" src="https://github.com/user-attachments/assets/7969369f-797b-488f-8b58-f371d1f34a1b" />
 
 ## 🛠️ Installation
 
