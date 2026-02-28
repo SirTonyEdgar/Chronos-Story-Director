@@ -34,10 +34,10 @@
 - ```cd Chronos-Story-Director```
 
 ### 2. Backend Setup (Python)
-Create a virtual environment
+Create a virtual environment:
 ```python -m venv venv```
 
-Activate virtual environment
+### Activate virtual environment:
 ### Windows:
 ```venv\Scripts\activate```
 ### Mac/Linux:
