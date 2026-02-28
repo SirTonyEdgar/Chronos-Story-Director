@@ -34,16 +34,16 @@
 - ```cd Chronos-Story-Director```
 
 ### 2. Backend Setup (Python)
-# Create a virtual environment
+Create a virtual environment
 ```python -m venv venv```
 
-# Activate virtual environment
-# Windows:
+Activate virtual environment
+### Windows:
 ```venv\Scripts\activate```
-# Mac/Linux:
+### Mac/Linux:
 ```source venv/bin/activate```
 
-# Install dependencies
+### Install dependencies
 ```pip install -r requirements.txt```
 
 ### 3. Setup API Keys
@@ -59,11 +59,10 @@ Open a new terminal window in the project root:
 
 ## 🚀 Running Chronos
 You will need two terminal windows running simultaneously to power the engine.
-# Terminal 1: Start the Backend API:
-- ```# Ensure your python virtual environment is active```
+### Terminal 1: Start the Backend API (Ensure your python virtual environment is active):
 - ```uvicorn src.api:app --reload --port 8000```
 
-# Terminal 2: Start the React UI
+### Terminal 2: Start the React UI
 - ```cd frontend```
 - ```npm run dev```
 
