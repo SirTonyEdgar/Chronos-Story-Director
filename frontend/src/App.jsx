@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NotificationProvider } from './components/Notifications';
 
 // Core Navigation Components
 import Sidebar from './Sidebar';
@@ -85,7 +86,7 @@ export default function App() {
   // 2. Authenticated State: Render Main Dashboard
   return (
     <div style={styles.appContainer}>
-      
+      <NotificationProvider />
       {/* Primary Sidebar Navigation */}
       <div style={styles.sidebarContainer}>
         <Sidebar 

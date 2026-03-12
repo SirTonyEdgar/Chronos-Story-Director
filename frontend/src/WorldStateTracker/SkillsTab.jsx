@@ -3,59 +3,8 @@ import {
   Trash2, Plus, Zap, Edit2, Link as LinkIcon, 
   Search, Users, Box, Archive 
 } from 'lucide-react';
-
-// --- HELPER COMPONENTS ---
-
-const EditableTextarea = ({ value, onChange, placeholder, style, highlightFocus }) => {
-  const textareaRef = useRef(null);
-  const adjustHeight = () => {
-    const el = textareaRef.current;
-    if (el) {
-      el.style.height = 'auto'; 
-      el.style.height = `${el.scrollHeight}px`; 
-    }
-  };
-  useEffect(() => { adjustHeight(); }, [value]);
-
-  return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => { onChange(e); adjustHeight(); }}
-        placeholder={placeholder}
-        rows={1}
-        style={{
-          width: '100%', 
-          background: 'rgba(0,0,0,0.2)', 
-          border: '1px solid #2f2f35',
-          borderRadius: '6px', 
-          color: '#eee', 
-          outline: 'none', 
-          fontFamily: 'inherit',
-          resize: 'none', 
-          overflow: 'hidden', 
-          minHeight: '36px',
-          lineHeight: '1.5',
-          display: 'block', 
-          padding: '8px 10px', 
-          fontSize: '13px', 
-          transition: 'all 0.2s',
-          ...style
-        }}
-        onFocus={(e) => {
-          e.target.style.borderColor = highlightFocus ? highlightFocus : '#eab308';
-          e.target.style.background = '#18181b';
-        }} 
-        onBlur={(e) => {
-          e.target.style.borderColor = '#2f2f35';
-          e.target.style.background = 'rgba(0,0,0,0.2)';
-        }}
-      />
-      {!value && <Edit2 size={10} color="#444" style={{ position: 'absolute', right: '10px', top: '12px', pointerEvents: 'none' }} />}
-    </div>
-  );
-};
+import { EditableTextarea } from '../components/SharedComponents';
+import { confirm } from '../components/Notifications';
 
 // --- MAIN COMPONENT ---
 
@@ -122,8 +71,9 @@ export default function SkillsTab({ state, setState }) {
     setState({ ...state, Skills: [...skills, newSkill] });
   };
 
-  const deleteSkill = (skillToDelete) => {
-    if (!window.confirm("Permanently delete this skill?")) return;
+  const deleteSkill = async (skillToDelete) => {
+    const ok = await confirm("Delete this skill?", { title: "Delete Skill", confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     setState({ ...state, Skills: skills.filter(s => s !== skillToDelete) });
   };
 

@@ -4,8 +4,8 @@ import {
   PenTool, MessageSquare, Swords, Book, BarChart3, 
   Share2, MessageCircle, FileText, Settings, LogOut, Archive
 } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from './config';
+import { toast, confirm } from './components/Notifications';
 
 /**
  * Sidebar Navigation Component
@@ -20,7 +20,8 @@ export default function Sidebar({ activeTab, setActiveTab, currentProfile, onSwi
    * content is streamed as a ZIP file from the backend.
    */
   const handleExport = async () => {
-    if (!confirm(`Create and download backup for "${currentProfile}"?`)) return;
+    const ok = await confirm(`Create and download backup for "${currentProfile}"?`, { title: "Export Profile", confirmLabel: "Export" });
+    if (!ok) return;
     try {
       const res = await axios.get(`${API_URL}/profiles/export/${currentProfile}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -32,7 +33,7 @@ export default function Sidebar({ activeTab, setActiveTab, currentProfile, onSwi
       link.remove();
     } catch (err) {
       console.error("Export failed:", err);
-      alert("Failed to export profile. Please verify backend connection.");
+      toast("Failed to export profile. Please verify backend connection." + err, "error");
     }
   };
 

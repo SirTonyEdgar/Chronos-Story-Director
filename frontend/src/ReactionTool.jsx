@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { MessageCircle, RefreshCw, Undo2, Send, Database, Edit2, Trash2, Save, X, Clock, Search, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from './config';
+import { toast, confirm } from './components/Notifications';
 
 const REACTION_TEMPLATES = {
   "👤 Individual / Personal": [
@@ -38,6 +38,10 @@ export default function ReactionTool({ profile }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedId, setExpandedId] = useState(null);
 
+  // --- MULTIVERSE STATE ---
+  const [timeline, setTimeline] = useState("");
+  const [availableTimelines, setAvailableTimelines] = useState([]);
+
   // Style State
   const [category, setCategory] = useState("👤 Individual / Personal");
   const [format, setFormat] = useState("Internal Monologue / Private Thoughts");
@@ -59,6 +63,7 @@ export default function ReactionTool({ profile }) {
     if (profile) {
       fetchFiles();
       fetchHistory();
+      fetchTimelines();
     }
   }, [profile]);
 
@@ -77,8 +82,15 @@ export default function ReactionTool({ profile }) {
     } catch (err) { console.error("Error fetching history:", err); }
   };
 
+  const fetchTimelines = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/state/${profile}`);
+      setAvailableTimelines(res.data.Timelines || []);
+    } catch (err) { console.error("Error fetching timelines:", err); }
+  };
+
   const handleSimulate = async () => {
-    if (!faction) return alert("Please specify a Target Faction.");
+    if (!faction) return toast("Please specify a Target Faction.", "warning");
     setLoading(true);
     setOutput("");
     setActiveTab("output");
@@ -92,12 +104,13 @@ export default function ReactionTool({ profile }) {
         faction: faction,
         format_style: stylePrompt,
         public_only: isPublic,
-        custom_instructions: instructions
+        custom_instructions: instructions,
+        timeline: timeline // <--- NEW: Passed to Backend!
       });
       setOutput(res.data.content);
       fetchHistory();
     } catch (err) {
-      alert("Error: " + (err.response?.data?.detail || err.message));
+      toast("Error: " + (err.response?.data?.detail || err.message), "error");
     } finally {
       setLoading(false);
     }
@@ -110,16 +123,16 @@ export default function ReactionTool({ profile }) {
         scene_file: selectedFile,
         faction: faction
       });
-      alert(`Undo Complete: ${res.data.file_message}`);
+      toast(`Undo Complete: ${res.data.file_message}`, "success");
       setOutput(""); 
       fetchHistory();
     } catch (err) {
-      alert("Undo Failed: " + err.message);
+      toast("Undo Failed: " + err.message, "error");
     }
   };
 
   // --- CRUD Handlers ---
-const handleDeleteClick = (id) => {
+  const handleDeleteClick = (id) => {
     setDeletingId(id);
   };
 
@@ -129,7 +142,7 @@ const handleDeleteClick = (id) => {
       await axios.delete(`${API_URL}/reaction/delete/${profile}/${deletingId}`);
       fetchHistory();
     } catch (err) { 
-      alert("Delete Failed: " + err.message); 
+      toast("Delete Failed: " + err.message, "error"); 
     } finally {
       setDeletingId(null);
     }
@@ -149,7 +162,7 @@ const handleDeleteClick = (id) => {
       });
       setEditingId(null);
       fetchHistory();
-    } catch (err) { alert("Save Failed: " + err.message); }
+    } catch (err) { toast("Save Failed: " + err.message, "error"); }
   };
 
   const filteredHistory = history.filter(item => 
@@ -177,6 +190,30 @@ const handleDeleteClick = (id) => {
             <select value={selectedFile} onChange={e => setSelectedFile(e.target.value)} style={inputStyle}>
               {files.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
+          </div>
+
+          {/* Timeline Selection */}
+          <div style={groupStyle}>
+            <label style={{...labelStyle, color: '#a855f7'}}>Timeline (Multiverse)</label>
+            {availableTimelines.length > 0 ? (
+              <select 
+                value={timeline} 
+                onChange={e => setTimeline(e.target.value)} 
+                style={{...inputStyle, borderColor: '#a855f7'}}
+              >
+                <option value="">Universal (All Timelines)</option>
+                {availableTimelines.map((tl, i) => (
+                  <option key={i} value={tl.Name}>{tl.Name}</option>
+                ))}
+              </select>
+            ) : (
+              <input 
+                value={timeline} 
+                onChange={e => setTimeline(e.target.value)} 
+                placeholder="e.g. Prime Earth" 
+                style={{...inputStyle, borderColor: '#a855f7'}} 
+              />
+            )}
           </div>
 
           <div style={groupStyle}>

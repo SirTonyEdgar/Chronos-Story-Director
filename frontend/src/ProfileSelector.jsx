@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Clock, FolderPlus, LogIn } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from './config';
+import { toast, confirm } from './components/Notifications';
 
 export default function ProfileSelector({ onSelect }) {
   const [profiles, setProfiles] = useState([]);
@@ -30,12 +30,12 @@ export default function ProfileSelector({ onSelect }) {
     if (!newProfileName) return;
     try {
       const res = await axios.post(`${API_URL}/profiles/create?name=${newProfileName}`);
-      alert(`Profile "${res.data.name}" Created!`);
+      toast(`Profile "${res.data.name}" Created!`, "success");
       await fetchProfiles();
       setSelected(res.data.name);
       setNewProfileName("");
     } catch (err) {
-      alert("Error: " + err.message);
+      toast("Error: " + err.message, "error");
     }
   };
 

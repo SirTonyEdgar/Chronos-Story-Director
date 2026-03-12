@@ -116,23 +116,29 @@ def init_db(profile_name: str):
     conn = sqlite3.connect(paths['db'], timeout=30) 
     c = conn.cursor()
     
-    # 1. Create the table with the new 'metadata' column
+    # 1. Create the table with metadata and timeline natively
     c.execute('''CREATE TABLE IF NOT EXISTS memory_fragments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         source_filename TEXT, 
         content TEXT, 
         type TEXT, 
         year INTEGER DEFAULT NULL,
-        metadata TEXT DEFAULT ''  -- [NEW: Holds AI-generated summaries]
+        metadata TEXT DEFAULT '',
+        timeline TEXT DEFAULT ''
     )''')
     
-    # [Migration Hack]: If the table already exists from an older version, 
-    # try to add the column. If it's already there, it just ignores the error.
+    # Add metadata column to older databases
     try:
         c.execute("ALTER TABLE memory_fragments ADD COLUMN metadata TEXT DEFAULT ''")
     except sqlite3.OperationalError:
-        pass # Column already exists
-    
+        pass 
+        
+    # Add timeline column to older databases
+    try:
+        c.execute("ALTER TABLE memory_fragments ADD COLUMN timeline TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
     c.execute('''CREATE TABLE IF NOT EXISTS story_settings (
         key TEXT PRIMARY KEY, value TEXT
     )''')
@@ -185,11 +191,16 @@ def get_story_settings(profile_name: str) -> dict:
 # ==========================================
 # --- KNOWLEDGE BASE (CRUD) ---
 # ==========================================
-def add_fragment(profile_name, filename, content, doc_type):
+def add_fragment(profile_name, filename, content, doc_type, timeline=""):
+    """Persists a new document to DB and File System, tagged with an optional timeline."""
+    init_db(profile_name)
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30)
     c = conn.cursor()
-    c.execute("INSERT INTO memory_fragments (source_filename, content, type) VALUES (?, ?, ?)", (filename, content, doc_type))
+    c.execute(
+        "INSERT INTO memory_fragments (source_filename, content, type, timeline) VALUES (?, ?, ?, ?)", 
+        (filename, content, doc_type, timeline)
+    )
     conn.commit()
     conn.close()
 
@@ -200,15 +211,15 @@ def add_fragment(profile_name, filename, content, doc_type):
         except Exception as e: print(f"File Mirror Error: {e}")
 
 def get_fragments(profile_name: str, doc_type: Optional[str] = None):
+    """Retrieves fragments, now including the timeline data."""
+    init_db(profile_name)
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     if doc_type: 
-        # [UPDATED: Added 'metadata' to the SELECT statement]
-        c.execute("SELECT id, source_filename, content, type, metadata FROM memory_fragments WHERE type = ? ORDER BY id DESC", (doc_type,))
+        c.execute("SELECT id, source_filename, content, type, metadata, timeline FROM memory_fragments WHERE type = ? ORDER BY id DESC", (doc_type,))
     else: 
-        # [UPDATED: Added 'metadata' to the SELECT statement]
-        c.execute("SELECT id, source_filename, content, type, metadata FROM memory_fragments ORDER BY type, id DESC")
+        c.execute("SELECT id, source_filename, content, type, metadata, timeline FROM memory_fragments ORDER BY type, id DESC")
     rows = c.fetchall()
     conn.close()
     return rows
@@ -233,17 +244,22 @@ def get_content_by_ids(profile_name: str, id_list: List[int]) -> str:
     finally:
         conn.close()
 
-def update_fragment(profile_name, frag_id, new_content):
+def update_fragment(profile_name, frag_id, new_content, new_timeline=None):
+    """Updates content and optionally changes the assigned timeline."""
+    init_db(profile_name)
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     
-    c.execute("SELECT source_filename, type FROM memory_fragments WHERE id = ?", (frag_id,))
+    c.execute("SELECT source_filename, type, timeline FROM memory_fragments WHERE id = ?", (frag_id,))
     row = c.fetchone()
     
     if row:
-        filename, doc_type = row
-        c.execute("UPDATE memory_fragments SET content = ? WHERE id = ?", (new_content, frag_id))
+        filename, doc_type, current_timeline = row
+
+        final_timeline = new_timeline if new_timeline is not None else current_timeline
+        
+        c.execute("UPDATE memory_fragments SET content = ?, timeline = ? WHERE id = ?", (new_content, final_timeline, frag_id))
         conn.commit()
         
         file_path = get_fragment_path(profile_name, doc_type, filename)
@@ -356,6 +372,62 @@ def save_world_state(profile_name: str, new_state_dict: Dict):
         with open(paths['state'], 'w') as f: json.dump(new_state_dict, f, indent=4)
         return True, "State Saved"
     except Exception as e: return False, str(e)
+
+# ==========================================
+# --- PROJECT MANAGEMENT (WORLD STATE) ---
+# ==========================================
+
+def add_project(profile_name: str, name: str, description: str, faction: str):
+    """Adds a new project to the World State."""
+    state = get_world_state(profile_name)
+    if "Projects" not in state:
+        state["Projects"] = []
+        
+    new_project = {
+        "Name": name,
+        "Description": description,
+        "Faction": faction,
+        "Progress": 0,
+        "Notes": ""
+    }
+    state["Projects"].append(new_project)
+    return save_world_state(profile_name, state)
+
+def update_project(profile_name: str, index: int, progress: int, notes: str, new_name=None, new_desc=None):
+    """Updates an existing project's progress and notes."""
+    state = get_world_state(profile_name)
+    if "Projects" not in state or index < 0 or index >= len(state["Projects"]):
+        return False, "Project not found."
+        
+    proj = state["Projects"][index]
+    proj["Progress"] = progress
+    proj["Notes"] = notes
+    if new_name: proj["Name"] = new_name
+    if new_desc: proj["Description"] = new_desc
+    
+    return save_world_state(profile_name, state)
+
+def complete_project(profile_name: str, index: int, lore_summary: str, doc_type="Fact"):
+    """
+    Removes a completed project from the World State AND automatically 
+    saves its completion as a historical Fact/Lore in the database.
+    """
+    state = get_world_state(profile_name)
+    if "Projects" not in state or index < 0 or index >= len(state["Projects"]):
+        return False, "Project not found."
+        
+    # Remove from active state
+    proj = state["Projects"].pop(index)
+    save_world_state(profile_name, state)
+    
+    # Convert the completed project into permanent historical memory
+    safe_name = re.sub(r'[\\/*?:"<>|]', "", proj['Name']).replace(" ", "_")
+    filename = f"Project_Completed_{safe_name}.txt"
+    
+    # Save to the Knowledge Base so the RAG remembers it happened
+    add_fragment(profile_name, filename, lore_summary, doc_type)
+    
+    return True, f"Project '{proj['Name']}' completed and archived to Knowledge Base."
 
 # ==========================================
 # --- CHAT & REACTION HISTORY ---

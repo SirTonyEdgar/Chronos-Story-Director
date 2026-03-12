@@ -5,8 +5,8 @@ import {
   PenTool, BookOpen, Edit, FileMinus, 
   Clock, ChevronDown, Check, X, Merge, Plus
 } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from './config';
+import { toast, confirm } from './components/Notifications';
 
 /**
  * MultiSelect Component
@@ -134,6 +134,8 @@ export default function SceneCreator({ profile }) {
   const [part, setPart] = useState(1);
   const [title, setTitle] = useState("");
   const [brief, setBrief] = useState("");
+  const [timeline, setTimeline] = useState("");
+  const [availableTimelines, setAvailableTimelines] = useState([]);
   
   // Context Selection
   const [selectedContext, setSelectedContext] = useState([]);
@@ -161,11 +163,6 @@ export default function SceneCreator({ profile }) {
     if (profile) loadProfileData();
   }, [profile]);
 
-  /**
-   * Sorts the file list with a specific hierarchy:
-   * 1. Chapter files (Ascending by Chapter Number -> Part Number)
-   * 2. Non-Chapter files (Preserving API order, typically newest first)
-   */
   const sortFiles = (fileList) => {
     const chapterRegex = /^(?:Ch|Chapter)[_ ]?(\d+)(?:_Part_(\d+))?/i;
     
@@ -196,24 +193,24 @@ export default function SceneCreator({ profile }) {
 
   const loadProfileData = async () => {
     try {
-      const [filesRes, chapterRes, settingsRes] = await Promise.all([
+      const [filesRes, chapterRes, settingsRes, stateRes] = await Promise.all([
         axios.get(`${API_URL}/files/${profile}`),
         axios.get(`${API_URL}/next_chapter/${profile}`),
-        axios.get(`${API_URL}/settings/${profile}`)
+        axios.get(`${API_URL}/settings/${profile}`),
+        axios.get(`${API_URL}/state/${profile}`)
       ]);
 
       setFiles(sortFiles(filesRes.data));
       setChapter(chapterRes.data.next_chapter);
 
-      // Parse configuration
       const s = settingsRes.data;
       setUseTimeSystem(String(s.use_time_system).toLowerCase() === 'true');
       setUseChapters(String(s.enable_chapters || 'true').toLowerCase() === 'true');
       
-      // Parse granular time settings
       setShowYear(String(s.enable_year || 'true').toLowerCase() === 'true');
       setShowDate(String(s.enable_date || 'true').toLowerCase() === 'true');
       setShowClock(String(s.enable_clock || 'true').toLowerCase() === 'true');
+      setAvailableTimelines(stateRes.data.Timelines || []);
 
     } catch (err) {
       console.error("Initialization Failed:", err);
@@ -229,59 +226,51 @@ export default function SceneCreator({ profile }) {
 
   // --- ACTIONS ---
 
-  const handleSave = async () => {
-    if (!title || !generatedContent) return alert("Missing title or content");
-    
-    // Auto-detect if "Part" is relevant (Part > 1 or explicitly set)
-    const partSuffix = part > 0 ? `_Part_${part}` : "";
-    const filename = `Chapter_${chapter}${partSuffix}_${title.replace(/ /g, "_")}.txt`;
-
-    try {
-      await axios.post(`${API_URL}/scenes/${profile}`, {
-        filename: filename,
-        content: generatedContent
-      });
-      alert("Saved!");
-      fetchScenes();
-    } catch (err) { console.error(err); }
-  };
-
   const handleGenerate = async () => {
+    if (!brief) return toast("Please provide a Scene Brief.", "warning");
+    
     setIsGenerating(true);
     try {
-      const res = await axios.post(`${API_URL}/generate/scene`, {
-        profile,
-        chapter: parseInt(chapter),
-        part: parseInt(part),
-        title,
-        brief: sceneBrief,
+      // Fixed API endpoint and payload mapping
+      const res = await axios.post(`${API_URL}/scene/generate/${profile}`, {
+        chapter: parseInt(chapter) || null,
+        title: title,
+        year: parseInt(year) || 0,
+        date_str: dateStr,
+        time_str: timeStr,
+        brief: brief,
         context_files: selectedContext,
-        fog_of_war: false 
+        fog_of_war: fogOfWar,
+        timeline: timeline
       });
-      setGeneratedContent(res.data.draft);
+      
+      await refreshFileList();
+      setSelectedFile(res.data.filename);
+      setFileContent(res.data.content);
+      setActiveTab("read");
+      
     } catch (err) {
       console.error(err);
-      alert("Generation failed.");
+      toast("Generation failed: " + (err.response?.data?.detail || err.message), "error");
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleMergeSelected = async () => {
-    if (selectedManageFiles.length < 2) return alert("Select at least 2 files to merge.");
+    if (selectedManageFiles.length < 2) return toast("Select at least 2 files to merge.", "warning");
     
-    // Auto-sort files alphabetically so Part 1 comes before Part 2
     const sortedFiles = [...selectedManageFiles].sort();
-    
-    if (!confirm(`Merge these ${sortedFiles.length} files into a single scene?\n\n${sortedFiles.join('\n')}`)) return;
+    const ok = await confirm(`Merge these ${sortedFiles.length} files into a single scene?\n\n${sortedFiles.join('\n')}`, { title: "Merge Scenes", confirmLabel: "Merge" });
+    if (!ok) return;
 
     try {
       await axios.post(`${API_URL}/merge/scenes/${profile}`, { filenames: sortedFiles });
-      alert("Merged successfully!");
+      toast("Merged successfully!", "success");
       refreshFileList(); 
       setSelectedManageFiles([]); 
     } catch (err) {
-      alert("Merge failed: " + (err.response?.data?.detail || err.message));
+      toast("Merge failed: " + (err.response?.data?.detail || err.message), "error");
     }
   };
 
@@ -290,7 +279,7 @@ export default function SceneCreator({ profile }) {
     try {
       const res = await axios.get(`${API_URL}/file/${profile}/${filename}`);
       setFileContent(res.data.content);
-    } catch (err) { alert("Failed to load file content."); }
+    } catch (err) { toast("Failed to load file content.", "error"); }
   };
 
   const handleSaveEdit = async () => {
@@ -299,41 +288,33 @@ export default function SceneCreator({ profile }) {
         filename: selectedFile,
         content: fileContent
       });
-      alert("File saved successfully.");
-    } catch (err) { alert("Save failed."); }
+      toast("File saved successfully.", "success");
+    } catch (err) { toast("Save failed.", "error"); }
   };
 
-  /**
-   * Handles bulk deletion.
-   * Requires double confirmation to prevent accidental data loss.
-   */
   const handleDelete = async () => {
-    if (selectedManageFiles.length === 0) return alert("No files selected.");
+    if (selectedManageFiles.length === 0) return toast("No files selected.", "warning");
     
-    // 1. Prepare list for confirmation
     const fileListString = selectedManageFiles.map(f => `• ${f}`).join('\n');
     const count = selectedManageFiles.length;
 
-    // 2. First Confirmation
     const firstConfirm = window.confirm(
       `You are about to delete ${count} file(s):\n\n${fileListString}\n\nDo you want to proceed?`
     );
     if (!firstConfirm) return;
 
-    // 3. Second Confirmation (Final Safety Check)
     const secondConfirm = window.confirm(
       `⚠️ FINAL WARNING ⚠️\n\nThis action is PERMANENT and cannot be undone.\n\nAre you absolutely sure?`
     );
     if (!secondConfirm) return;
 
-    // 4. Execute
     try {
       await axios.post(`${API_URL}/files/bulk_delete/${profile}`, { filenames: selectedManageFiles });
-      alert("Files deleted successfully.");
+      toast("Files deleted successfully.", "success");
       refreshFileList();
       setSelectedManageFiles([]);
     } catch (err) {
-      alert("Delete failed: " + (err.response?.data?.detail || err.message));
+      toast("Delete failed: " + (err.response?.data?.detail || err.message), "error");
     }
   };
 
@@ -427,7 +408,7 @@ export default function SceneCreator({ profile }) {
                   )}
                 </div>
               )}
-              <div style={{ flex: 3 }}>
+              <div style={{ flex: 2 }}>
                 <label style={styles.label}>Scene Title</label>
                 <input 
                   type="text" 
@@ -436,6 +417,31 @@ export default function SceneCreator({ profile }) {
                   placeholder="Optional (Auto-Generated if empty)" 
                   style={styles.input} 
                 />
+              </div>
+              
+              {/* Timeline Input / Dropdown */}
+              <div style={{ flex: 1 }}>
+                <label style={styles.label}>Timeline (Multiverse)</label>
+                {availableTimelines.length > 0 ? (
+                  <select 
+                    value={timeline} 
+                    onChange={e => setTimeline(e.target.value)} 
+                    style={{...styles.input, borderColor: '#a855f7'}}
+                  >
+                    <option value="">Universal (No Timeline)</option>
+                    {availableTimelines.map((tl, idx) => (
+                      <option key={idx} value={tl.Name}>{tl.Name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input 
+                    type="text" 
+                    value={timeline} 
+                    onChange={e => setTimeline(e.target.value)} 
+                    placeholder="e.g. Prime Earth" 
+                    style={{...styles.input, borderColor: '#a855f7'}} 
+                  />
+                )}
               </div>
             </div>
 
@@ -527,7 +533,7 @@ export default function SceneCreator({ profile }) {
               disabled={isGenerating} 
               style={styles.primaryButton}
             >
-              {isGenerating ? "Drafting Scene..." : <><Play size={16} /> Generate Scene</>}
+              {isGenerating ? "Drafting Scene (This may take a minute)..." : <><Play size={16} /> Generate Scene</>}
             </button>
           </div>
         )}
@@ -562,7 +568,7 @@ export default function SceneCreator({ profile }) {
                 <textarea 
                   value={fileContent} 
                   onChange={e => setFileContent(e.target.value)} 
-                  style={{ ...styles.textarea, height: '500px', fontFamily: 'monospace' }} 
+                  style={{ ...styles.textarea, height: '600px', fontFamily: 'monospace' }} 
                 />
                 <button onClick={handleSaveEdit} style={styles.primaryButton}>
                   <Save size={16} /> Save Changes

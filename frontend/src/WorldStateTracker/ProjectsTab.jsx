@@ -3,17 +3,15 @@ import axios from 'axios';
 import { 
   Plus, Trash2, Archive, CheckCircle2, 
   ChevronDown, ChevronRight, X, AlertCircle,
-  Briefcase, Users, Box, Search, Link as LinkIcon
+  Briefcase, Users, Box, Search, Link as LinkIcon,
+  Zap
 } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from '../config';
+import { TimelineDropdown } from '../components/SharedComponents';
+import { confirm } from '../components/Notifications';
 
 // --- HELPER COMPONENTS ---
 
-/**
- * Streamlit-Style Slider
- * A custom interactive slider for tracking progress (0-100%).
- */
 const StreamlitSlider = ({ value, onChange, color }) => {
   const trackRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -68,11 +66,10 @@ const StreamlitSlider = ({ value, onChange, color }) => {
 export default function ProjectsTab({ state, setState, profile }) {
   const projects = state.Projects || [];
   const cast = state.Cast || [];
+  const availableTimelines = state.Timelines || [];
 
   const [selectedOwnerId, setSelectedOwnerId] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
-
-  // --- DERIVED DATA ---
 
   const projectCounts = useMemo(() => {
     const counts = { UNASSIGNED: 0, ALL: projects.length };
@@ -90,14 +87,12 @@ export default function ProjectsTab({ state, setState, profile }) {
   const filteredProjects = useMemo(() => {
     let list = projects;
     
-    // Owner Filter
     if (selectedOwnerId === "UNASSIGNED") {
       list = list.filter(p => !p.OwnerId || !cast.find(c => c.id === p.OwnerId));
     } else if (selectedOwnerId !== "ALL") {
       list = list.filter(p => p.OwnerId === selectedOwnerId);
     }
 
-    // Search Filter
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
       list = list.filter(p => 
@@ -108,14 +103,11 @@ export default function ProjectsTab({ state, setState, profile }) {
     return list;
   }, [projects, selectedOwnerId, searchTerm, cast]);
 
-  // --- HANDLERS ---
-
   const updateProjects = (newList) => {
     setState({ ...state, Projects: newList });
   };
 
   const handleAdd = () => {
-    // Auto-assign owner if a specific character view is active
     const newOwner = (selectedOwnerId !== "ALL" && selectedOwnerId !== "UNASSIGNED") 
       ? selectedOwnerId 
       : "";
@@ -125,14 +117,16 @@ export default function ProjectsTab({ state, setState, profile }) {
       Description: "Define objective...",
       Progress: 0,
       Features_Specs: "",
-      OwnerId: newOwner
+      OwnerId: newOwner,
+      Timeline: ""
     };
 
     updateProjects([...projects, newProject]);
   };
 
-  const handleDelete = (indexInFiltered) => {
-    if (!confirm("Permanently delete this project?")) return;
+  const handleDelete = async (indexInFiltered) => {
+    const ok = await confirm("Permanently delete this project?", { title: "Delete Asset", confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     const projectToDelete = filteredProjects[indexInFiltered];
     const updated = projects.filter(p => p !== projectToDelete);
     updateProjects(updated);
@@ -148,24 +142,22 @@ export default function ProjectsTab({ state, setState, profile }) {
     updateProjects(updated);
   };
 
-  // Archive Logic (Requires Backend)
   const handleArchive = async (indexInFiltered, summary, targetCategory) => {
     const proj = filteredProjects[indexInFiltered];
     const entryTitle = `Completed Project: ${proj.Name}`;
-    const activeProfile = profile || localStorage.getItem("lastProfile");
 
     try {
-      await axios.post(`${API_URL}/knowledge/create/${activeProfile}`, {
+      await axios.post(`${API_URL}/knowledge/create/${profile}`, {
         name: entryTitle,
         content: summary,
-        category: targetCategory 
+        category: targetCategory,
+        timeline: proj.Timeline || ""
       });
-      // Remove after archiving
       const updated = projects.filter(p => p !== proj);
       updateProjects(updated);
-      alert(`✅ Project archived to ${targetCategory}!`);
+      toast(`✅ Project archived to ${targetCategory}!`, "success");
     } catch (err) {
-      alert("Archive failed: " + err.message);
+      toast("Archive failed: " + err.message, "error");
     }
   };
 
@@ -179,7 +171,6 @@ export default function ProjectsTab({ state, setState, profile }) {
   return (
     <div style={styles.container}>
       
-      {/* HEADER INFO */}
       <div style={styles.infoBox}>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
           <Briefcase size={20} style={{ marginTop: '2px', color: '#60a5fa' }} />
@@ -237,7 +228,6 @@ export default function ProjectsTab({ state, setState, profile }) {
         {/* --- MAIN CONTENT --- */}
         <div style={styles.mainContent}>
           
-          {/* Toolbar */}
           <div style={styles.toolbar}>
             <div style={styles.viewTitle}>{getOwnerName()}</div>
             <div style={{display:'flex', gap:'12px', alignItems:'center'}}>
@@ -256,7 +246,6 @@ export default function ProjectsTab({ state, setState, profile }) {
             </div>
           </div>
 
-          {/* Projects List */}
           <div style={styles.listWrapper}>
             {filteredProjects.length === 0 && (
               <div style={styles.emptyState}>
@@ -275,6 +264,7 @@ export default function ProjectsTab({ state, setState, profile }) {
                 onChange={handleUpdate} 
                 onDelete={handleDelete}
                 onArchive={handleArchive}
+                availableTimelines={availableTimelines}
               />
             ))}
           </div>
@@ -287,7 +277,7 @@ export default function ProjectsTab({ state, setState, profile }) {
 
 // --- PROJECT CARD COMPONENT ---
 
-const ProjectCard = ({ index, project, cast, showOwnerDropdown, onChange, onDelete, onArchive }) => {
+const ProjectCard = ({ index, project, cast, showOwnerDropdown, onChange, onDelete, onArchive, availableTimelines }) => {
   const [expanded, setExpanded] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [archiveNote, setArchiveNote] = useState("");
@@ -348,6 +338,18 @@ const ProjectCard = ({ index, project, cast, showOwnerDropdown, onChange, onDele
                   style={styles.input}
                 />
               </div>
+
+              {/* TIMELINE DROPDOWN */}
+              {availableTimelines.length > 0 && (
+                <div>
+                  <label style={{...styles.label, color: '#a855f7'}}>TIMELINE (MULTIVERSE)</label>
+                  <TimelineDropdown 
+                    value={project.Timeline || ""} 
+                    onChange={(val) => onChange(index, "Timeline", val)} 
+                    timelines={availableTimelines} 
+                  />
+                </div>
+              )}
 
               {/* Owner Dropdown (Conditional) */}
               {showOwnerDropdown && (

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { BookOpen, FileText, Download, X, Plus, FileType, CheckCircle2 } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from './config';
+import { toast, confirm } from './components/Notifications';
 
 export default function Compiler({ profile }) {
   const [availableFiles, setAvailableFiles] = useState([]);
@@ -33,7 +33,7 @@ export default function Compiler({ profile }) {
   };
 
   const handleDownloadText = async () => {
-    if (selectedFiles.length === 0) return alert("Select scenes first.");
+    if (selectedFiles.length === 0) return toast("Select scenes first.", "warning");
     setLoading(true);
     try {
       const res = await axios.post(`${API_URL}/compiler/compile/${profile}`, { filenames: selectedFiles });
@@ -59,14 +59,14 @@ export default function Compiler({ profile }) {
       link.click();
       link.remove();
     } catch (err) {
-      alert("Compile Failed: " + (err.response?.data?.detail || err.message));
+      toast("Compile Failed: " + (err.response?.data?.detail || err.message), "error");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDownloadBinary = async (format) => {
-    if (selectedFiles.length === 0) return alert("Select scenes first.");
+    if (selectedFiles.length === 0) return toast("Select scenes first.", "warning");
     setLoading(true);
     try {
       const res = await axios.post(
@@ -84,7 +84,7 @@ export default function Compiler({ profile }) {
       link.remove();
     } catch (err) {
       console.error(err);
-      alert(`Export to ${format.toUpperCase()} failed. Check backend logs for missing libraries.`);
+      toast(`Export to ${format.toUpperCase()} failed. Check backend logs for missing libraries.`, "warning");
     } finally {
       setLoading(false);
     }

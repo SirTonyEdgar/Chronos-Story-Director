@@ -4,8 +4,8 @@ import {
   Settings as SettingsIcon, Cpu, Globe, Save, Plus, Trash2, 
   Clock, Zap, Check, Calendar, Watch 
 } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from './config';
+import { toast, confirm } from './components/Notifications';
 
 // --- CUSTOM COMPONENTS ---
 
@@ -116,7 +116,7 @@ export default function Settings({ profile }) {
       setHasUnsavedChanges(false);
     } catch (err) {
       console.error("Critical Error loading settings:", err);
-      alert("Failed to load settings configuration.");
+      toast("Failed to load settings configuration." + err, "error");
     }
   };
 
@@ -164,7 +164,9 @@ export default function Settings({ profile }) {
       ];
 
       for (let [key, val] of updates) {
-        if (val !== undefined) await axios.post(`${API_URL}/settings/update/${profile}?key=${key}&value=${val}`);
+        if (val !== undefined) {
+          await axios.post(`${API_URL}/settings/update/${profile}?key=${encodeURIComponent(key)}&value=${encodeURIComponent(val)}`);
+        }
       }
 
       if (worldState) {
@@ -173,7 +175,7 @@ export default function Settings({ profile }) {
       }
       setHasUnsavedChanges(false);
     } catch (err) {
-      alert("Save operation failed.");
+      toast("Save operation failed." + err, "error");
     } finally { setIsSaving(false); }
   };
 

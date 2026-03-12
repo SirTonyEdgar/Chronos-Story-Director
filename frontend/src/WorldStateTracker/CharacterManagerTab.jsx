@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
   UserCircle, Users, Plus, Trash2, Star, Shield, 
-  Swords, Search, Save, Link as LinkIcon, Network, X, Clock, Edit2, Check
+  Swords, Search, Save, Link as LinkIcon, Network, X, Clock, Edit2, Check,
+  Zap, ChevronDown
 } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from '../config';
+import { TimelineDropdown } from '../components/SharedComponents';
+import { confirm } from '../components/Notifications';
 
 // --- CONFIGURATION ---
 
@@ -49,6 +51,8 @@ export default function CharacterManagerTab({ state, setState, profile }) {
   const [editLinkTarget, setEditLinkTarget] = useState("");
   const [editLinkType, setEditLinkType] = useState("");
 
+  const availableTimelines = state?.Timelines || [];
+
   useEffect(() => {
     if (state && !state.Cast) {
       normalizeDataStructure();
@@ -88,8 +92,7 @@ export default function CharacterManagerTab({ state, setState, profile }) {
 
   const fetchSettings = async () => {
     try {
-      const activeProfile = profile || localStorage.getItem("lastProfile");
-      const res = await axios.get(`${API_URL}/settings/${activeProfile}`);
+      const res = await axios.get(`${API_URL}/settings/${profile}`);
       setSettings(res.data);
     } catch (err) { console.error(err); }
   };
@@ -132,18 +135,16 @@ export default function CharacterManagerTab({ state, setState, profile }) {
   const addLink = () => {
     if (!newLinkTarget || !newLinkType.trim()) return;
     const currentLinks = activeChar.Links || [];
-    
-    // Prevent duplicates to same target
     const filteredLinks = currentLinks.filter(l => l.targetId !== newLinkTarget);
-    
     const newLink = { targetId: newLinkTarget, type: newLinkType };
     updateCharacter("Links", [...filteredLinks, newLink]);
     setNewLinkTarget("");
     setNewLinkType("");
   };
 
-  const removeLink = (targetId) => {
-    if (!window.confirm("Remove this connection?")) return;
+  const removeLink = async (targetId) => {
+    const ok = await confirm("Remove this connection?", { title: "Remove Connection", confirmLabel: "Remove", danger: true });
+    if (!ok) return;
     const currentLinks = activeChar.Links || [];
     updateCharacter("Links", currentLinks.filter(l => l.targetId !== targetId));
   };
@@ -156,12 +157,8 @@ export default function CharacterManagerTab({ state, setState, profile }) {
 
   const saveEditedLink = (index) => {
     if (!editLinkTarget || !editLinkType.trim()) return;
-    
     const currentLinks = [...(activeChar.Links || [])];
-    
-    // Update the specific link at index
     currentLinks[index] = { targetId: editLinkTarget, type: editLinkType };
-    
     updateCharacter("Links", currentLinks);
     setEditingLinkIndex(null);
   };
@@ -178,15 +175,17 @@ export default function CharacterManagerTab({ state, setState, profile }) {
       Icon: "Neutral",
       Age: "Unknown",
       Tags: [],
-      Links: []
+      Links: [],
+      Timeline: ""
     };
     const newState = { ...state, Cast: [...getCast(), newChar] };
     setState(newState);
     setSelectedId(newChar.id);
   };
 
-  const deleteCharacter = (id) => {
-    if (!window.confirm("Permanently delete this character?")) return;
+  const deleteCharacter = async (id) => {
+    const ok = await confirm("Permanently delete this character?", { title: "Delete Character", confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     const newState = { ...state, Cast: getCast().filter(c => c.id !== id) };
     setState(newState);
     if (selectedId === id) setSelectedId(null);
@@ -197,8 +196,6 @@ export default function CharacterManagerTab({ state, setState, profile }) {
   };
 
   const handleSettingBlur = async () => {
-    const activeProfile = profile || localStorage.getItem("lastProfile");
-    if (!activeProfile) return;
     setIsSavingSetting(true);
     try {
       await axios.post(`${API_URL}/settings/update/${activeProfile}?key=protagonist&value=${settings.protagonist}`);
@@ -396,7 +393,6 @@ export default function CharacterManagerTab({ state, setState, profile }) {
                                 <LinkIcon size={12} color="#60a5fa" style={{flexShrink: 0}} />
                                 
                                 {isEditing ? (
-                                  // --- EDIT MODE ---
                                   <>
                                     <select 
                                       style={{...styles.input, flex: 1, fontSize: '11px', margin: '0 4px', padding: '2px 4px', height: '24px'}}
@@ -418,7 +414,6 @@ export default function CharacterManagerTab({ state, setState, profile }) {
                                     </div>
                                   </>
                                 ) : (
-                                  // --- VIEW MODE ---
                                   <>
                                     <span style={{flex: 1, marginLeft: '8px', fontSize: '13px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>
                                       {target ? target.Name : "Unknown"} 
@@ -452,6 +447,18 @@ export default function CharacterManagerTab({ state, setState, profile }) {
                 {/* --- RIGHT COLUMN: TIME, TAGS, CONTEXT --- */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
                   
+                  {/* MULTIVERSE TIMELINE */}
+                  {availableTimelines.length > 0 && (
+                    <div>
+                      <label style={{...styles.label, color: '#a855f7'}}>NARRATIVE TIMELINE</label>
+                      <TimelineDropdown 
+                        value={activeChar.Timeline || ""} 
+                        onChange={(val) => updateCharacter("Timeline", val)} 
+                        timelines={availableTimelines} 
+                      />
+                    </div>
+                  )}
+
                   {/* GLOBAL WORLD CLOCK */}
                   <div style={styles.timeBox}>
                     <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px'}}>
@@ -612,7 +619,6 @@ const styles = {
     padding: '0 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', 
     justifyContent: 'center' 
   },
-  // Added for scrolling:
   scrollableList: { 
     maxHeight: '400px', 
     overflowY: 'auto', 
@@ -622,7 +628,5 @@ const styles = {
     paddingRight: '4px' 
   },
   linkItem: { display: 'flex', alignItems: 'center', background: '#09090b', padding: '6px 8px', borderRadius: '4px', border: '1px solid #222' },
-  
-  // Time Box
   timeBox: { background: '#131315', padding: '15px', borderRadius: '8px', border: '1px solid #27272a' }
 };

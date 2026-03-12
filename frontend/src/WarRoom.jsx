@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import { Swords, Save, Play, AlertTriangle, ShieldAlert, FileText } from 'lucide-react';
+import { Swords, Save, Play, AlertTriangle, ShieldAlert, FileText, X } from 'lucide-react';
+import { API_URL } from './config';
+import { toast, confirm } from './components/Notifications';
 
-const API_URL = "http://localhost:8000";
-
-export default function WarRoom() {
+export default function WarRoom({ profile }) {
   const [scenario, setScenario] = useState("");
   const [report, setReport] = useState("");
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [planName, setPlanName] = useState("");
 
   const handleRun = async () => {
-    if (!scenario) return alert("Please define a scenario first.");
+    if (!scenario) return toast("Please define a scenario first.", "warning");
     setLoading(true);
     setReport(""); 
 
@@ -23,16 +25,19 @@ export default function WarRoom() {
       setReport(res.data.report);
     } catch (err) {
       console.error(err);
-      alert("Simulation Failed: " + (err.response?.data?.detail || err.message));
+      toast("Simulation Failed: " + (err.response?.data?.detail || err.message), "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSaveToPlans = async () => {
-    const planName = prompt("Name this Operation:", `Op: ${scenario.slice(0, 20)}...`);
-    if (!planName) return;
+  const handleSaveClick = () => {
+    setPlanName(`Op: ${scenario.slice(0, 20)}...`);
+    setShowSaveModal(true);
+  };
 
+  const confirmSaveToPlans = async () => {
+    if (!planName) return;
     setIsSaving(true);
     try {
       const fullContent = `SCENARIO:\n${scenario}\n\nREPORT:\n${report}`;
@@ -41,9 +46,10 @@ export default function WarRoom() {
         content: fullContent,
         category: "Plan"
       });
-      alert("Saved to Knowledge Base (Plans)!");
+      toast("Saved to Knowledge Base (Plans)!", "success");
+      setShowSaveModal(false);
     } catch (err) {
-      alert("Save failed.");
+      toast("Save failed: " + (err.response?.data?.detail || err.message), "error");
     } finally {
       setIsSaving(false);
     }
@@ -55,7 +61,7 @@ export default function WarRoom() {
       height: '100%', 
       display: 'flex', 
       flexDirection: 'column', 
-      padding: '30px 30px 30px 60px', // <--- FIXED: Extra left padding
+      padding: '30px 30px 30px 60px',
       boxSizing: 'border-box'
     }}>
       
@@ -146,43 +152,16 @@ export default function WarRoom() {
               <li>Calculates <b>Betrayal Risks</b>.</li>
             </ul>
           </div>
-
         </div>
 
         {/* --- RIGHT PANEL: OUTPUT --- */}
-        <div style={{ 
-          flex: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          background: '#0c0c0c', 
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0c0c0c', position: 'relative', overflow: 'hidden' }}>
           
-          <div style={{ 
-            height: '60px', 
-            borderBottom: '1px solid #222', 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            padding: '0 25px',
-            background: '#111'
-          }}>
+          <div style={{ height: '60px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 25px', background: '#111' }}>
             <h3 style={{ margin: 0, fontSize: '15px', color: '#e4e4e7', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <FileText size={16} color="#71717a"/> Simulation Report
             </h3>
-            {report && (
-              <button 
-                onClick={handleSaveToPlans}
-                style={{
-                  background: 'transparent', color: '#3b82f6', border: '1px solid #3b82f6', padding: '6px 12px', 
-                  borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                  fontSize: '12px', fontWeight: '600'
-                }}
-              >
-                <Save size={14} /> Save to Plans
-              </button>
-            )}
+            {/* The old Save button used to be here - it has been removed */}
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '40px' }}>
@@ -198,9 +177,69 @@ export default function WarRoom() {
             )}
           </div>
 
+          {/* Sticky Action Footer (Only shows if there is a report) */}
+          {report && (
+            <div style={{ padding: '20px 40px', background: '#111', borderTop: '1px solid #222', display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={handleSaveClick}
+                style={{
+                  background: '#3b82f6', color: '#fff', border: 'none', padding: '12px 24px', 
+                  borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                  fontSize: '14px', fontWeight: 'bold', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+                }}
+              >
+                <Save size={18} /> Save to Plans
+              </button>
+            </div>
+          )}
         </div>
 
       </div>
+      {/* --- CUSTOM SAVE MODAL --- */}
+      {showSaveModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: '#111', border: '1px solid #333', borderRadius: '8px', padding: '24px', width: '450px', maxWidth: '90%', boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '18px' }}>
+                <Save size={20} color="#3b82f6" /> Save Operation Plan
+              </h3>
+              <button onClick={() => setShowSaveModal(false)} style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <p style={{ fontSize: '14px', color: '#ccc', lineHeight: '1.6', marginBottom: '20px' }}>
+              Assign a codename to this operation to archive the scenario and report into your Knowledge Base.
+            </p>
+            
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#888', marginBottom: '8px' }}>OPERATION NAME</label>
+            <input 
+              value={planName}
+              onChange={(e) => setPlanName(e.target.value)}
+              autoFocus
+              style={{ width: '100%', background: '#1a1a1a', border: '1px solid #333', color: '#fff', padding: '12px', borderRadius: '4px', outline: 'none', fontSize: '14px', marginBottom: '24px', boxSizing: 'border-box' }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button 
+                onClick={() => setShowSaveModal(false)} 
+                style={{ padding: '10px 16px', background: 'transparent', border: '1px solid #444', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmSaveToPlans} 
+                disabled={isSaving}
+                style={{ padding: '10px 16px', background: '#3b82f6', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                {isSaving ? "Saving..." : "Confirm & Save"}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,28 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Plus, Trash2, Globe, Activity, 
-  AlertTriangle, ChevronRight, Search 
+  AlertTriangle, ChevronRight, Search, Zap, ChevronDown 
 } from 'lucide-react';
+import { TimelineDropdown } from '../components/SharedComponents';
+import { confirm } from '../components/Notifications';
 
-/**
- * VariablesTab (Master-Detail Version)
- * Manages abstract global states and logic rules.
- */
 export default function VariablesTab({ state, setState }) {
   const vars = state["World Variables"] || [];
+  const availableTimelines = state.Timelines || [];
+  
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // --- DERIVED DATA ---
   const activeVar = vars[selectedIdx] || {};
 
   const filteredVars = vars.map((v, i) => ({ ...v, originalIndex: i }))
     .filter(v => (v.Name || "").toLowerCase().includes(searchTerm.toLowerCase()));
 
-  // --- HANDLERS ---
-
   const handleAdd = () => {
-    const newVar = { Name: "New Variable", Value: "0", Mechanic: "Define logic..." };
+    const newVar = { Name: "New Variable", Value: "0", Mechanic: "Define logic...", Timeline: "" };
     const newList = [...vars, newVar];
     setState({ ...state, "World Variables": newList });
     setSelectedIdx(newList.length - 1);
@@ -35,8 +32,9 @@ export default function VariablesTab({ state, setState }) {
     setState({ ...state, "World Variables": updated });
   };
 
-  const handleDelete = () => {
-    if (!confirm("Delete this world variable?")) return;
+  const handleDelete = async () => {
+    const ok = await confirm("Delete this variable?", { title: "Delete Variable", confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     const updated = vars.filter((_, i) => i !== selectedIdx);
     setState({ ...state, "World Variables": updated });
     setSelectedIdx(0);
@@ -96,8 +94,9 @@ export default function VariablesTab({ state, setState }) {
                   <div style={{ fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
                     {v.Name || "Untitled"}
                   </div>
-                  <div style={{ fontSize: '11px', opacity: 0.8, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ fontSize: '11px', opacity: 0.8, display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
                     <Activity size={10} /> {v.Value || "N/A"}
+                    {v.Timeline && <span style={{ color: '#a855f7', marginLeft: '4px' }}>[{v.Timeline}]</span>}
                   </div>
                 </div>
                 {selectedIdx === v.originalIndex && <ChevronRight size={14} />}
@@ -111,7 +110,7 @@ export default function VariablesTab({ state, setState }) {
           {vars.length > 0 && activeVar ? (
             <div style={styles.editor}>
               
-              {/* Top Row: Name & Value */}
+              {/* Top Row: Name, Value & Timeline */}
               <div style={styles.row}>
                 <div style={{ flex: 2 }}>
                   <label style={styles.label}>VARIABLE NAME</label>
@@ -122,8 +121,9 @@ export default function VariablesTab({ state, setState }) {
                     placeholder="e.g. Corruption Level"
                   />
                 </div>
+                
                 <div style={{ flex: 1 }}>
-                  <label style={styles.label}>CURRENT VALUE / STATE</label>
+                  <label style={styles.label}>CURRENT STATE</label>
                   <input 
                     value={activeVar.Value || ""}
                     onChange={e => updateActive("Value", e.target.value)}
@@ -131,6 +131,18 @@ export default function VariablesTab({ state, setState }) {
                     placeholder="e.g. 75%"
                   />
                 </div>
+
+                {/* SLEEK TIMELINE DROPDOWN */}
+                {availableTimelines.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <label style={{...styles.label, color: '#a855f7'}}>TIMELINE RULE</label>
+                    <TimelineDropdown 
+                      value={activeVar.Timeline || ""} 
+                      onChange={(val) => updateActive("Timeline", val)} 
+                      timelines={availableTimelines} 
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Logic Rule */}
@@ -148,7 +160,7 @@ export default function VariablesTab({ state, setState }) {
               <div style={styles.footer}>
                 <div style={styles.tip}>
                   <AlertTriangle size={14} color="#f59e0b" />
-                  <span>This rule applies globally to all scenes.</span>
+                  <span>This rule {activeVar.Timeline ? `only applies to [${activeVar.Timeline}]` : "applies globally to all scenes"}.</span>
                 </div>
                 <button onClick={handleDelete} style={styles.deleteBtn}>
                   <Trash2 size={14} /> Delete
@@ -174,7 +186,7 @@ const styles = {
   layout: { display: 'flex', gap: '20px', flex: 1, minHeight: 0 },
   
   // Sidebar
-  sidebar: { width: '240px', display: 'flex', flexDirection: 'column', borderRight: '1px solid #27272a', paddingRight: '15px' },
+  sidebar: { width: '260px', display: 'flex', flexDirection: 'column', borderRight: '1px solid #27272a', paddingRight: '15px' },
   toolbar: { display: 'flex', gap: '10px', marginBottom: '15px' },
   searchWrapper: { display: 'flex', alignItems: 'center', background: '#09090b', border: '1px solid #333', borderRadius: '6px', padding: '8px', flex: 1 },
   searchInput: { background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '12px', width: '100%' },

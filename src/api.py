@@ -47,6 +47,7 @@ class SceneGenerationRequest(BaseModel):
     brief: str
     context_files: List[str] = []
     fog_of_war: bool = False
+    timeline: str = ""
 
 class SceneEditRequest(BaseModel):
     filename: str
@@ -58,10 +59,12 @@ class FileListRequest(BaseModel):
 # -- Chat --
 class ChatQueryRequest(BaseModel):
     prompt: str
+    timeline: str = ""
 
 # -- War Room --
 class SimulationRequest(BaseModel):
     scenario: str
+    timeline: str = ""
 
 # -- Knowledge Base --
 class KnowledgeItem(BaseModel):
@@ -69,6 +72,7 @@ class KnowledgeItem(BaseModel):
     content: str
     category: str
     id: Optional[int] = None
+    timeline: str = ""
 
 class DeleteRequest(BaseModel):
     id: int
@@ -76,9 +80,26 @@ class DeleteRequest(BaseModel):
 # -- World State --
 class AnalysisRequest(BaseModel):
     filenames: List[str]
+    timeline: str = ""
 
 class AssetsPayload(BaseModel):
     assets: List[Dict[str, Any]]
+
+# -- Project Endpoints --
+
+class ProjectRequest(BaseModel):
+    name: str
+    description: str
+    faction: str
+
+class ProjectUpdateRequest(BaseModel):
+    progress: int
+    notes: str
+    new_name: Optional[str] = None
+    new_desc: Optional[str] = None
+
+class ProjectCompleteRequest(BaseModel):
+    lore_summary: str
 
 # -- Network Map --
 class GraphUpdate(BaseModel):
@@ -91,6 +112,7 @@ class ReactionRequest(BaseModel):
     format_style: str
     public_only: bool
     custom_instructions: str = ""
+    timeline: str = ""
 
 class EditReactionRequest(BaseModel):
     new_text: str
@@ -175,7 +197,8 @@ def generate_new_scene(profile: str, payload: SceneGenerationRequest):
         text, path = engine.generate_scene(
             profile, payload.chapter, payload.year, payload.date_str, 
             payload.time_str, payload.title, payload.brief, 
-            payload.context_files, use_fog_of_war=payload.fog_of_war
+            payload.context_files, use_fog_of_war=payload.fog_of_war,
+            timeline=payload.timeline
         )
         return {"status": "Success", "filename": os.path.basename(path), "content": text}
     except Exception as e:
@@ -192,9 +215,9 @@ def save_scene_edits(profile: str, payload: SceneEditRequest):
 @app.delete("/scene/{profile}/{filename}")
 def delete_scene_file(profile: str, filename: str):
     """Permanently deletes a scene file."""
-    success, msg = engine.delete_specific_scene(profile, filename)
-    if not success: 
-        raise HTTPException(status_code=400, detail=msg)
+    count = engine.bulk_delete_files(profile, [filename])
+    if count == 0: 
+        raise HTTPException(status_code=400, detail="File not found or could not be deleted.")
     return {"status": "Deleted"}
 
 @app.post("/merge/scenes/{profile}")
@@ -240,7 +263,7 @@ def query_co_author(profile: str, payload: ChatQueryRequest):
         # Save User Message
         engine.save_chat_message(profile, "user", payload.prompt)
         # Generate Response
-        response_text = engine.run_chat_query(profile, payload.prompt)
+        response_text = engine.run_chat_query(profile, payload.prompt, timeline=payload.timeline)
         # Save Assistant Message
         engine.save_chat_message(profile, "assistant", response_text)
         
@@ -263,7 +286,7 @@ def clear_chat_history(profile: str):
 def run_strategic_simulation(profile: str, payload: SimulationRequest):
     """Runs the Monte Carlo Strategy Simulator."""
     try:
-        report = engine.run_war_room_simulation(profile, payload.scenario)
+        report = engine.run_war_room_simulation(profile, payload.scenario, timeline=payload.timeline)
         return {"report": report}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -277,13 +300,21 @@ def run_strategic_simulation(profile: str, payload: SimulationRequest):
 def list_knowledge_fragments(profile: str, category: str):
     """Retrieves all knowledge fragments (Lore, Rules, Plans) of a specific category."""
     fragments = engine.get_fragments(profile, category)
-    # Map backend tuple structure to JSON
-    return [{"id": f[0], "name": f[1], "content": f[2]} for f in fragments]
+    # Map backend tuple structure to JSON, specifically grabbing index 5 for timeline
+    return [
+        {
+            "id": f[0], 
+            "name": f[1], 
+            "content": f[2], 
+            "timeline": f[5] if len(f) > 5 and f[5] else ""
+        } 
+        for f in fragments
+    ]
 
 @app.post("/knowledge/create/{profile}")
 def create_knowledge_entry(profile: str, item: KnowledgeItem):
     """Adds a new entry to the knowledge base."""
-    engine.add_fragment(profile, item.name, item.content, item.category)
+    engine.add_fragment(profile, item.name, item.content, item.category, item.timeline)
     return {"status": "Created"}
 
 @app.post("/knowledge/update/{profile}")
@@ -292,7 +323,7 @@ def update_knowledge_entry(profile: str, item: KnowledgeItem):
     if not item.id:
         raise HTTPException(status_code=400, detail="ID required for update")
     
-    engine.update_fragment(profile, item.id, item.content)
+    engine.update_fragment(profile, item.id, item.content, item.timeline)
     engine.rename_fragment(profile, item.id, item.name)
     return {"status": "Updated"}
 
@@ -329,8 +360,8 @@ def analyze_state_changes(profile: str, payload: AnalysisRequest):
         for fname in payload.filenames:
             content = engine.read_file_content(profile, fname)
             combined_text += f"\n=== {fname} ===\n{content}\n"
-        
-        new_state = engine.analyze_state_changes(profile, combined_text)
+
+        new_state = engine.analyze_state_changes(profile, combined_text, timeline=payload.timeline)
         return new_state
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -343,6 +374,23 @@ def save_specific_assets(profile: str, payload: AssetsPayload):
     engine.save_world_state(profile, state)
     return {"status": "Assets Saved"}
 
+@app.post("/projects/create/{profile}")
+def create_new_project(profile: str, payload: ProjectRequest):
+    success, msg = engine.add_project(profile, payload.name, payload.description, payload.faction)
+    if not success: raise HTTPException(status_code=400, detail=msg)
+    return {"status": "Project Created"}
+
+@app.post("/projects/update/{profile}/{index}")
+def update_existing_project(profile: str, index: int, payload: ProjectUpdateRequest):
+    success, msg = engine.update_project(profile, index, payload.progress, payload.notes, payload.new_name, payload.new_desc)
+    if not success: raise HTTPException(status_code=400, detail=msg)
+    return {"status": "Project Updated"}
+
+@app.post("/projects/complete/{profile}/{index}")
+def complete_and_archive_project(profile: str, index: int, payload: ProjectCompleteRequest):
+    success, msg = engine.complete_project(profile, index, payload.lore_summary)
+    if not success: raise HTTPException(status_code=400, detail=msg)
+    return {"status": "Project Completed", "message": msg}
 
 # ==========================================
 # 6. 🕸️ NETWORK MAP MODULE
@@ -400,7 +448,8 @@ def generate_faction_reaction(profile: str, payload: ReactionRequest):
             payload.faction, 
             public_only=payload.public_only, 
             format_style=payload.format_style,
-            custom_instructions=payload.custom_instructions
+            custom_instructions=payload.custom_instructions,
+            timeline=payload.timeline
         )
         if not success:
             raise HTTPException(status_code=400, detail=result)

@@ -3,6 +3,8 @@ import {
   Trash2, Plus, Coins, Edit2, Link as LinkIcon, 
   Search, Users, Box, Archive 
 } from 'lucide-react';
+import { EditableTextarea } from '../components/SharedComponents';
+import { confirm } from '../components/Notifications';
 
 // --- CONFIGURATION ---
 const ICON_OPTIONS = [
@@ -13,57 +15,6 @@ const ICON_OPTIONS = [
 ];
 
 // --- HELPER COMPONENTS ---
-
-const EditableTextarea = ({ value, onChange, placeholder, style, highlightFocus }) => {
-  const textareaRef = useRef(null);
-  const adjustHeight = () => {
-    const el = textareaRef.current;
-    if (el) {
-      el.style.height = 'auto'; 
-      el.style.height = `${el.scrollHeight}px`; 
-    }
-  };
-  useEffect(() => { adjustHeight(); }, [value]);
-
-  return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => { onChange(e); adjustHeight(); }}
-        placeholder={placeholder}
-        rows={1}
-        style={{
-          width: '100%', 
-          background: 'rgba(0,0,0,0.2)', 
-          border: '1px solid #2f2f35',
-          borderRadius: '6px', 
-          color: '#eee', 
-          outline: 'none', 
-          fontFamily: 'inherit',
-          resize: 'none', 
-          overflow: 'hidden', 
-          minHeight: '36px',
-          lineHeight: '1.5',
-          display: 'block', 
-          padding: '8px 10px', 
-          fontSize: '13px', 
-          transition: 'all 0.2s',
-          ...style
-        }}
-        onFocus={(e) => {
-          e.target.style.borderColor = highlightFocus ? highlightFocus : '#60a5fa';
-          e.target.style.background = '#18181b';
-        }} 
-        onBlur={(e) => {
-          e.target.style.borderColor = '#2f2f35';
-          e.target.style.background = 'rgba(0,0,0,0.2)';
-        }}
-      />
-      {!value && <Edit2 size={10} color="#444" style={{ position: 'absolute', right: '10px', top: '12px', pointerEvents: 'none' }} />}
-    </div>
-  );
-};
 
 const IconSelector = ({ value, onChange }) => (
   <select 
@@ -152,8 +103,9 @@ export default function AssetsTab({ state, setState }) {
     setState({ ...state, Assets: [...assets, defaultItem] });
   };
 
-  const deleteItem = (assetToDelete) => {
-    if (!window.confirm("Permanently delete this asset?")) return;
+  const deleteItem = async (assetToDelete) => {
+    const ok = await confirm("Permanently delete this asset?", { title: "Delete Asset", confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     setState({ ...state, Assets: assets.filter(a => a !== assetToDelete) });
   };
 
@@ -332,7 +284,7 @@ export default function AssetsTab({ state, setState }) {
                 )}
               </tbody>
             </table>
-          </div>9
+          </div>
 
         </div>
       </div>

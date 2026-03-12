@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useMemo } from 'react';
 import { Users, Shield, Swords, Edit2, Link as LinkIcon } from 'lucide-react';
+import { EditableTextarea } from '../components/SharedComponents';
 
 const getIconPath = (iconKey) => {
   const map = {
@@ -11,41 +12,6 @@ const getIconPath = (iconKey) => {
   };
   const filename = map[iconKey] || "neutral.png";
   return `/icons/${filename}`;
-};
-
-const EditableTextarea = ({ value, onChange, placeholder, style }) => {
-  const textareaRef = useRef(null);
-  
-  const adjustHeight = () => {
-    const el = textareaRef.current;
-    if (el) {
-      el.style.height = 'auto'; 
-      el.style.height = `${el.scrollHeight}px`; 
-    }
-  };
-
-  useEffect(() => { adjustHeight(); }, [value]);
-
-  return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => { onChange(e); adjustHeight(); }}
-        placeholder={placeholder}
-        rows={1}
-        style={{
-          width: '100%', background: 'rgba(0, 0, 0, 0.2)', border: '1px solid #3f3f46',      
-          borderRadius: '4px', color: '#eee', outline: 'none', fontFamily: 'inherit', 
-          resize: 'none', overflow: 'hidden', minHeight: '32px', lineHeight: '1.5', 
-          display: 'block', padding: '6px 8px', fontSize: '13px', transition: 'border-color 0.2s', ...style
-        }}
-        onFocus={(e) => e.target.style.borderColor = '#60a5fa'} 
-        onBlur={(e) => e.target.style.borderColor = '#3f3f46'}
-      />
-      {!value && <Edit2 size={10} color="#555" style={{ position: 'absolute', right: '8px', top: '10px', pointerEvents: 'none' }} />}
-    </div>
-  );
 };
 
 export default function RelationsTab({ state, setState }) {

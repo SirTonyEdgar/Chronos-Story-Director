@@ -63,6 +63,8 @@ class StoryState(TypedDict):
     time_str: str 
     scene_title: str
     scene_brief: str
+    scene_outline: str
+    timeline: str
     current_draft: str
     revision_count: int
     is_grounded: bool
@@ -78,15 +80,13 @@ class StoryState(TypedDict):
 def get_paths(profile): return db.get_paths(profile)
 def list_profiles(): return db.list_profiles()
 def ensure_profile_structure(name): return db.ensure_profile_structure(name)
-def get_story_settings(profile): return db.get_story_settings(profile)
-def update_story_setting(p, k, v): return db.update_story_setting(p, k, v)
 def get_all_files_list(profile): return db.get_all_files_list(profile)
 def read_file_content(p, f): return db.read_file_content(p, f)
 def get_world_state(p): return db.get_world_state(p)
 def save_world_state(p, s): return db.save_world_state(p, s)
 def get_fragments(p, c): return db.get_fragments(p, c)
-def add_fragment(p, n, c, t): return db.add_fragment(p, n, c, t)
-def update_fragment(p, i, c): return db.update_fragment(p, i, c)
+def add_fragment(p, n, c, t, tl=""): return db.add_fragment(p, n, c, t, tl)
+def update_fragment(p, i, c, tl=""): return db.update_fragment(p, i, c, tl)
 def delete_fragment(p, i): return db.delete_fragment(p, i)
 def rename_fragment(p, i, n): return db.rename_fragment(p, i, n)
 def get_chat_history(p): return db.get_chat_history(p)
@@ -97,7 +97,6 @@ def get_all_faction_memories(p): return db.get_all_faction_memories(p)
 def update_faction_reaction(p, i, t, f): return db.update_faction_reaction(p, i, t, f)
 def delete_faction_reaction(p, i): return db.delete_faction_reaction(p, i)
 def save_faction_reaction(p, f, t, s): return db.save_faction_reaction(p, f, t, s)
-def get_recent_faction_memory(p, f, l=3): return db.get_recent_faction_memory(p, f, l)
 def add_project(p, n, d, f): return db.add_project(p, n, d, f)
 def update_project(p, i, pr, no, nn=None, nd=None): return db.update_project(p, i, pr, no, nn, nd)
 def complete_project(p, i, l, t="Fact"): return db.complete_project(p, i, l, t)
@@ -200,6 +199,7 @@ _llm_cache = {}
 def get_llm(profile_name: str, task_type: str = "scene", settings: Optional[dict] = None):
     """
     Factory: Returns the correct LLM client based on the Task and Profile Settings.
+    Now 100% provider-agnostic with intelligent fallbacks.
     """
     if settings is None:
         settings = db.get_story_settings(profile_name)
@@ -212,41 +212,59 @@ def get_llm(profile_name: str, task_type: str = "scene", settings: Optional[dict
         "retrieval": "model_retrieval"
     }
     target_key = model_map.get(task_type, "model_chat")
-    model_name = settings.get(target_key, "gemini-2.5-flash")
+    model_name = settings.get(target_key, "")
     
     # --- CHECK CACHE ---
     cache_key = f"{model_name}"
-    if cache_key in _llm_cache:
+    if model_name and cache_key in _llm_cache:
         return _llm_cache[cache_key]
 
     client = None
 
-    # --- CREATE CLIENT ---
-    
-    # 1. Google Gemini
-    if "gemini" in model_name.lower() and GOOGLE_API_KEY:
-        client = ChatGoogleGenerativeAI(model=model_name, google_api_key=GOOGLE_API_KEY)
-    
-    # 2. OpenAI GPT
-    elif ("gpt" in model_name.lower() or "o1" in model_name.lower()) and OPENAI_API_KEY:
-        try:
-            client = ChatOpenAI(model=model_name, api_key=OPENAI_API_KEY)
-        except ImportError:
-            print("OpenAI library not installed.")
+    # --- ATTEMPT TO CREATE REQUESTED CLIENT ---
+    if model_name:
+        # 1. Google Gemini
+        if "gemini" in model_name.lower() and GOOGLE_API_KEY:
+            client = ChatGoogleGenerativeAI(model=model_name, google_api_key=GOOGLE_API_KEY)
+            
+        # 2. OpenAI GPT
+        elif ("gpt" in model_name.lower() or "o1" in model_name.lower()) and OPENAI_API_KEY:
+            try:
+                client = ChatOpenAI(model=model_name, api_key=OPENAI_API_KEY)
+            except ImportError:
+                print("OpenAI library not installed.")
+                
+        # 3. Anthropic Claude
+        elif "claude" in model_name.lower() and ANTHROPIC_API_KEY and ChatAnthropic:
+            client = ChatAnthropic(model=model_name, api_key=ANTHROPIC_API_KEY)
 
-    # 3. Anthropic Claude
-    elif "claude" in model_name.lower() and ANTHROPIC_API_KEY and ChatAnthropic:
-        client = ChatAnthropic(model=model_name, api_key=ANTHROPIC_API_KEY)
-
-    # 4. Fallback (Default to Gemini Flash if available)
-    if not client and GOOGLE_API_KEY:
-        client = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GOOGLE_API_KEY)
+    # --- INTELLIGENT FALLBACK (If requested model failed or no keys matched) ---
+    if not client:
+        print(f"Warning: Could not load requested model '{model_name}'. Engaging smart fallback...")
         
+        # Priority 1: OpenAI
+        if OPENAI_API_KEY:
+            try:
+                client = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
+                print("Fallback: Using OpenAI (gpt-4o-mini)")
+            except ImportError: pass
+            
+        # Priority 2: Anthropic
+        if not client and ANTHROPIC_API_KEY and ChatAnthropic:
+            client = ChatAnthropic(model="claude-3-5-haiku-latest", api_key=ANTHROPIC_API_KEY)
+            print("Fallback: Using Anthropic (claude-3-5-haiku-latest)")
+            
+        # Priority 3: Google
+        if not client and GOOGLE_API_KEY:
+            client = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GOOGLE_API_KEY)
+            print("Fallback: Using Google (gemini-2.5-flash)")
+
     # --- SAVE TO CACHE & RETURN ---
     if client:
         _llm_cache[cache_key] = client 
         return client
         
+    print("CRITICAL ERROR: No valid API keys found in .env file.")
     return MockLLM()
 
 # ==========================================
@@ -284,10 +302,10 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
         print(f"Metadata Generation Error: {e}")
         return ""
 
-def get_relevant_fragment_ids(profile_name, user_query, doc_types=None):
+def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_timeline=""):
     """
     Scans the 'Table of Contents' (Titles + Metadata) and asks the AI 
-    which entries are relevant to the user's query.
+    which entries are relevant to the user's query and current timeline.
     """
     rows = db.get_fragments(profile_name, doc_type=None)
     
@@ -303,7 +321,6 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None):
         # r[4] is the 'metadata' column. We add it if it exists.
         meta_text = ""
         if len(r) > 4 and r[4]:
-            # Replace newlines with spaces so it stays on one line in the TOC
             clean_meta = r[4].replace('\n', ' ')
             meta_text = f" | {clean_meta}"
             
@@ -311,8 +328,17 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None):
     
     if not toc_list: return []
     
-    # Limit menu size to save tokens (keep most recent 150 entries)
+    # Limit menu size to save tokens
     toc_str = "\n".join(toc_list[:150])
+    
+    # --- MULTIVERSE FILTERING INSTRUCTION ---
+    timeline_instruction = ""
+    if current_timeline:
+        timeline_instruction = f"""
+        CRITICAL MULTIVERSE RULE: The current scene takes place in the timeline: [{current_timeline}].
+        - If a document's Title or Metadata explicitly mentions a different timeline/universe, DO NOT select it unless the user query explicitly asks for a crossover.
+        - Documents that do not specify a timeline can be assumed to be 'Universal Lore' and may be selected if relevant.
+        """
 
     prompt = f"""
     ROLE: Database Librarian.
@@ -327,6 +353,7 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None):
     *** INSTRUCTION ***
     Analyze the scenario. Identify which documents contain necessary background info based on their Title or Metadata.
     - If the user mentions a specific character, location, or event, check the 'Entities' and 'Summary' to find the right file.
+    {timeline_instruction}
     - Select ONLY highly relevant items.
     - Max 7 items.
     
@@ -428,6 +455,39 @@ def extract_dynamic_spoilers(plan: str, year: int, profile_name: str, settings: 
         return [x.strip() for x in response.split(',')]
     except Exception:
         return []
+    
+def format_state_for_llm(state_dict: dict) -> str:
+    """
+    Strips UI-specific noise (like coordinates) and formats 
+    the World State into highly readable, indented JSON for the AI.
+    """
+    # Create a deep copy so we don't accidentally delete real data
+    import copy
+    clean_state = copy.deepcopy(state_dict)
+    
+    # Strip UI coordinates from Characters
+    for char in clean_state.get('Cast', []):
+        if 'ui_pos' in char:
+            del char['ui_pos']
+            
+    # Strip UI coordinates from Assets
+    for asset in clean_state.get('Assets', []):
+        if 'ui_pos' in asset:
+            del asset['ui_pos']
+            
+    # Dump with a 2-space indent for perfect LLM readability
+    return json.dumps(clean_state, indent=2)
+
+def _extract_json(text_response: str) -> Any:
+    """Safely extracts JSON from an LLM response, even if wrapped in markdown blockquotes."""
+    try:
+        match = re.search(r'\x60\x60\x60(?:json)?\s*(.*?)\s*\x60\x60\x60', text_response, re.DOTALL | re.IGNORECASE)
+        if match:
+            return json.loads(match.group(1))
+        return json.loads(text_response.strip())
+    except Exception as e:
+        print(f"JSON Parsing Error: {e} | Raw Text: {text_response[:100]}...")
+        return None
 
 def infer_header_data(brief: str, prev_context: str, settings: dict, profile_name: str) -> dict:
     """
@@ -468,30 +528,122 @@ def auto_generate_title(profile_name: str, draft_text: str, brief: str) -> str:
 
 # --- CORE GENERATION LOGIC ---
 
+def plan_scene(state: StoryState) -> dict:
+    """
+    Workflow Node 1: The Director (Planner).
+    Reads the heavy context (Lore, Rules, World State) and outputs a detailed Beat Sheet.
+    """
+    profile = state['profile_name']
+    brief = state['scene_brief']
+    current_timeline = state.get('timeline', '').strip()
+    
+    settings = db.get_story_settings(profile)
+    state_tracking = db.get_world_state(profile)
+    rules, plan, db_spoilers = get_global_context(profile, current_timeline)
+    
+    print(f"  [Planner] Scanning Knowledge Base for: '{brief[:50]}...'")
+    relevant_ids = get_relevant_fragment_ids(
+        profile, 
+        user_query=brief, 
+        doc_types=["Lore", "Fact", "Rulebook", "Scene"],
+        current_timeline=current_timeline
+    )
+    
+    smart_context_str = db.get_content_by_ids(profile, relevant_ids)
+    if not smart_context_str:
+        smart_context_str = "No specific historical records found for this scene."
+
+    dynamic_spoilers = extract_dynamic_spoilers(plan, state['year'], profile, settings=settings) 
+    all_banned = list(set(db_spoilers + dynamic_spoilers))
+    
+    use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
+    era_display = f"{state['year']}" if (use_time_system and state['year'] > 0) else "Undefined"
+
+    variables_section = ""
+    world_vars = state_tracking.get("World Variables", [])
+    if world_vars:
+        variables_section = "*** WORLD MECHANICS (STRICT) ***\n"
+        for v in world_vars:
+            variables_section += f"- {v.get('Name', 'Var')}: {v.get('Value', '0')} (RULE: {v.get('Mechanic', '')})\n"
+
+    timeline_section = ""
+    if settings.get('use_timelines', 'true').lower() == 'true':
+        timelines_list = state_tracking.get("Timelines", [])
+        if timelines_list:
+            timeline_section = "ACTIVE TIMELINES (MULTIVERSE):\n"
+            for t in timelines_list:
+                timeline_section += f"- {t.get('Name', 'Unknown')}: {t.get('Description', '')}\n"
+    
+    if current_timeline:
+        timeline_section += f"\n*** CRITICAL: THIS SCENE OCCURS STRICTLY IN TIMELINE: [{current_timeline}] ***\n"
+        timeline_section += "Rule: Do NOT reference events, alive/dead statuses, or assets from other timelines unless an explicit crossover is happening.\n"
+
+    prompt = f"""
+    ROLE: Lead Story Director & Outliner.
+    CURRENT CALENDAR YEAR: {era_display}
+    
+    *** WORLD LAWS & MECHANICS (STRICT) ***
+    {rules}
+    {variables_section}
+    
+    *** STRATEGIC PLAN ***
+    {plan}
+
+    *** RELEVANT LORE & CONTEXT (SMART RETRIEVAL) ***
+    {smart_context_str}
+
+    *** WORLD STATE & PROJECTS ***
+    {format_state_for_llm(state_tracking)}
+
+    {timeline_section}
+    
+    *** BANNED CONCEPTS (SPOILERS) ***
+    [{", ".join(all_banned)}]
+    
+    *** NARRATIVE CONTEXT (RECENT) ***
+    {state['recent_context']}
+    
+    === MISSION ===
+    Create a detailed, 5-to-7 bullet point 'Beat Sheet' (Outline) for the following scene brief.
+    Ensure it respects the World Rules, avoids Banned Concepts, and logically follows the Recent Context.
+    
+    BRIEF: {state['scene_brief']}
+    
+    OUTPUT: ONLY the bulleted outline. Do not write the prose.
+    """
+    
+    llm = get_llm(profile, "analysis", settings=settings)
+    response = llm.invoke([HumanMessage(content=prompt)]).content
+    
+    return {
+        "scene_outline": response,
+        "banned_words": ", ".join(all_banned)
+    }
+
 def draft_scene(state: StoryState) -> dict:
     """
-    Workflow Node 1: Narrative Drafting (Adaptive Realism).
-    
-    Constructs a comprehensive prompt including World State, Rules, 
-    Global Context, and Narrative Continuity to generate the next scene.
+    Workflow Node 2: Narrative Drafting (The Writer).
+    Focuses 100% on writing beautiful prose based on the Planner's outline.
     """
     profile = state['profile_name']
     brief = state['scene_brief']
     chapter = state.get('chapter_num')
-    part = state.get('part_num', 1)  # Default to Part 1 if unspecified
+    part = state.get('part_num', 1)
+    current_timeline = state.get('timeline', '').strip()
 
     settings = db.get_story_settings(profile)
     state_tracking = db.get_world_state(profile)
-    
+
     # 1. Retrieve Global Context (Rules, Plan, Spoilers)
-    rules, plan, db_spoilers = get_global_context(profile)
+    rules, plan, db_spoilers = get_global_context(profile, current_timeline)
     
     # 2. Smart Retrieval (RAG)
     print(f"  [Librarian] Scanning Knowledge Base for: '{brief[:50]}...'")
     relevant_ids = get_relevant_fragment_ids(
         profile, 
         user_query=brief, 
-        doc_types=["Lore", "Fact", "Rulebook", "Scene"]
+        doc_types=["Lore", "Fact", "Rulebook", "Scene"],
+        current_timeline=current_timeline
     )
     
     smart_context_str = db.get_content_by_ids(profile, relevant_ids)
@@ -541,6 +693,10 @@ def draft_scene(state: StoryState) -> dict:
             timeline_section = "ACTIVE TIMELINES (MULTIVERSE):\n"
             for t in timelines_list:
                 timeline_section += f"- {t.get('Name', 'Unknown')}: {t.get('Description', '')}\n"
+    
+    if current_timeline:
+        timeline_section += f"\n*** CRITICAL: THIS SCENE OCCURS STRICTLY IN TIMELINE: [{current_timeline}] ***\n"
+        timeline_section += "Rule: Do NOT reference events, alive/dead statuses, or assets from other timelines unless there is an explicit crossover happening right now.\n"
     
     # 7. World Variables (Physics/Mechanics)
     variables_section = ""
@@ -602,7 +758,7 @@ def draft_scene(state: StoryState) -> dict:
     {smart_context_str}
 
     *** WORLD STATE & PROJECTS ***
-    {json.dumps(state_tracking)}
+    {format_state_for_llm(state_tracking)}
     
     *** FORMATTING ***
     {header}
@@ -616,13 +772,19 @@ def draft_scene(state: StoryState) -> dict:
     *** NARRATIVE CONTEXT (RECENT) ***
     {state['recent_context']}
     
+    *** APPROVED SCENE OUTLINE ***
+    {state.get('scene_outline', 'No outline generated.')}
+    
     === MISSION ===
     BRIEF: {state['scene_brief']}
+    
+    INSTRUCTION: Write the full prose for this scene by expanding the APPROVED SCENE OUTLINE into engaging dialogue, sensory descriptions, and action. Ensure you strictly follow all rules and context provided above.
     
     CRITIQUE: {state['critique_notes']}
     """
     
     # 10. Execute Generation
+    print(f"  [Drafter] Writing prose based on outline...")
     llm = get_llm(profile, "scene", settings=settings)
     response = llm.invoke([HumanMessage(content=prompt)]).content
     
@@ -634,16 +796,70 @@ def draft_scene(state: StoryState) -> dict:
 
 def critique_scene(state: StoryState) -> dict:
     """
-    Workflow Node 2: Validation.
-    Checks adherence to constraints (e.g. banned words) and logic integrity.
+    Workflow Node 3: Validation (The Continuity Editor).
+    Rigorously checks the draft against World Rules, State, Banned Words, and the Outline.
     """
-    prompt = f"ROLE: Editor. CHECK: Banned [{state['banned_words']}]? DRAFT: {state['current_draft']} OUTPUT: PASS/FAIL"
-    llm = get_llm(state['profile_name'], "chat")
-    res = llm.invoke([HumanMessage(content=prompt)]).content
+    profile = state['profile_name']
+
+    current_timeline = state.get('timeline', '').strip()
+
+    rules, _, _ = get_global_context(profile, current_timeline)
+    state_tracking = db.get_world_state(profile)
+
+    timeline_instruction = ""
+    if current_timeline:
+        timeline_instruction = f"6. TIMELINE CHECK: Did the draft accidentally include people or things that belong to a different timeline? This scene MUST strictly be in [{current_timeline}]."
     
-    if "PASS" in res:
+    prompt = f"""
+    ROLE: Continuity Editor & Logic Verifier.
+    
+    You are reviewing a newly drafted scene. Your job is to catch hallucinations, anachronisms, continuity errors, and logic breaks before it is published.
+
+    *** STRICT WORLD RULES ***
+    {rules}
+    
+    *** CURRENT WORLD STATE ***
+    {format_state_for_llm(state_tracking)}
+
+    *** BANNED CONCEPTS (DO NOT REVEAL) ***
+    [{state['banned_words']}]
+    
+    *** APPROVED SCENE OUTLINE ***
+    {state.get('scene_outline', 'No outline provided.')}
+
+    *** DRAFT TO REVIEW ***
+    {state['current_draft']}
+
+    *** INSTRUCTIONS ***
+    1. Read the Draft.
+    2. SPOILER CHECK: Did the draft accidentally reveal any of the Banned Concepts?
+    3. RULE CHECK: Did the draft violate any of the Strict World Rules? (e.g., using magic when magic is forbidden, or modern tech in a medieval setting).
+    4. STATE CHECK: Did the draft hallucinate characters who aren't present/alive, or assets the protagonist doesn't own according to the CURRENT WORLD STATE?
+    5. OUTLINE CHECK: Did the draft completely ignore the APPROVED SCENE OUTLINE?
+    {timeline_instruction}
+
+    6. If the draft is perfectly fine and respects the rules and state, reply EXACTLY with: PASS
+    7. If there are errors, reply with: FAIL, followed by a 1-2 sentence explanation of EXACTLY what needs to be fixed.
+    """
+    
+    # Use the 'analysis' model (usually a smarter model like GPT-4o or Claude 3.5 Sonnet)
+    llm = get_llm(profile, "analysis") 
+    res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+    
+    # 6. Evaluate the AI's critique
+    if res.startswith("PASS"):
         return {"is_grounded": True, "critique_notes": ""}
-    return {"is_grounded": False, "critique_notes": "Found banned content or logic break."}
+        
+    # If it failed, extract the AI's exact notes so the Drafter can fix it.
+    notes = res.replace("FAIL", "").strip()
+    notes = notes.strip(",").strip(":")
+    
+    print(f"  [Editor Agent] Rejection! Sending back to Drafter. Reason: {notes}")
+    
+    return {
+        "is_grounded": False, 
+        "critique_notes": f"EDITOR FEEDBACK TO FIX: {notes}"
+    }
 
 def generate_scene(
     profile: str, 
@@ -655,18 +871,23 @@ def generate_scene(
     brief: str, 
     context_files: List[str], 
     use_fog_of_war: bool,
-    part: int = 1
+    part: int = 1,
+    timeline: str = ""
 ) -> tuple[str, str]:
     """
     Entry point for the scene generation pipeline.
-    Initializes the state graph, aggregates context, and executes the workflow.
+    Now utilizes a 3-Node Architecture: Planner -> Drafter -> Validator
     """
     # 1. Graph Setup
     workflow = StateGraph(StoryState)
+    workflow.add_node("planner", plan_scene)
     workflow.add_node("drafter", draft_scene)
     workflow.add_node("validator", critique_scene)
-    workflow.set_entry_point("drafter")
+    
+    workflow.set_entry_point("planner")
+    workflow.add_edge("planner", "drafter")
     workflow.add_edge("drafter", "validator")
+    
     workflow.add_conditional_edges("validator", lambda s: END if s['is_grounded'] or s['revision_count'] > 2 else "drafter")
     app = workflow.compile()
     
@@ -718,6 +939,8 @@ def generate_scene(
         "time_str": final_time,
         "scene_title": temp_title,
         "scene_brief": brief,
+        "scene_outline": "",
+        "timeline": timeline,
         "recent_context": context_str,
         "revision_count": 0,
         "critique_notes": "",
@@ -727,6 +950,7 @@ def generate_scene(
         "use_fog_of_war": use_fog_of_war,
     }
     
+    # 5. Execute AI Loop
     final_state = app.invoke(initial_input)
     
     # 6. Auto-Title & Persistence
@@ -736,7 +960,7 @@ def generate_scene(
 
     safe_title = re.sub(r'[\\/*?:"<>|]', "", final_title).replace(" ", "_")
 
-    # Filename Generation (incorporating Part)
+    # Filename Generation
     prefix = ""
     if chapter_num is not None:
         part_suffix = f"_Part_{part}" if part and int(part) > 1 else ""
@@ -752,10 +976,10 @@ def generate_scene(
     filepath = os.path.join(paths['output'], filename)
     
     # Collision Avoidance
+    original_base = filename.replace(".txt", "")
     counter = 1
     while os.path.exists(filepath):
-        base_name = filename.replace(".txt", "")
-        filename = f"{base_name}_{counter}.txt"
+        filename = f"{original_base}_{counter}.txt"
         filepath = os.path.join(paths['output'], filename)
         counter += 1
         
@@ -875,12 +1099,12 @@ def clear_chat_history(profile_name):
     """Purges the chat history log."""
     db.clear_chat_history(profile_name)
 
-def run_chat_query(profile_name, user_input):
+def run_chat_query(profile_name, user_input, timeline=""):
     """
     Interacts with the Co-Author persona (Adaptive Logic).
     """
-    # 1. Retrieve Global Context (Using DB helpers)
-    rules, plan, _ = get_global_context(profile_name)
+    # 1. Retrieve Global Context
+    rules, plan, _ = get_global_context(profile_name, timeline)
     state = db.get_world_state(profile_name)
     settings = db.get_story_settings(profile_name)
 
@@ -888,11 +1112,12 @@ def run_chat_query(profile_name, user_input):
     recent_scenes = get_last_scenes(profile_name)
     
     # 3. Smart Retrieval (Internal Function)
-    print(f"  [Co-Author] Researching: '{user_input[:50]}...'")
+    print(f"  [Co-Author] Researching: '{user_input[:50]}...' in timeline: '{timeline}'")
     relevant_ids = get_relevant_fragment_ids(
         profile_name, 
         user_query=user_input, 
-        doc_types=["Lore", "Fact", "Rulebook", "Scene"]
+        doc_types=["Lore", "Fact", "Rulebook", "Scene"],
+        current_timeline=timeline
     )
     
     # Efficient Batch Fetch via DB
@@ -905,6 +1130,10 @@ def run_chat_query(profile_name, user_input):
     era_display = "Undefined (Infer Tech Level from Lore)"
     if use_time_system and state.get('year', 0) > 0:
         era_display = f"{state['year']}"
+
+    timeline_instruction = ""
+    if timeline:
+        timeline_instruction = f"\n*** CRITICAL MULTIVERSE CONTEXT ***\nCURRENT TIMELINE: [{timeline}]\nYou must answer the user's query strictly based on the facts and realities of this specific timeline. Do not blend facts from other universes."
     
     # 5. Construct Prompt (HIERARCHY OF TRUTH + CALENDAR AGNOSTIC)
     prompt = f"""
@@ -912,6 +1141,7 @@ def run_chat_query(profile_name, user_input):
     
     *** TEMPORAL STATUS ***
     CURRENT CALENDAR YEAR: {era_display}
+    {timeline_instruction}
     
     *** PRIMARY SOURCE OF TRUTH (STORY BIBLE) ***
     {smart_knowledge}
@@ -956,16 +1186,13 @@ def run_chat_query(profile_name, user_input):
 # 6. WAR ROOM MODULE
 # ==========================================
 
-def run_war_room_simulation(profile, action_input):
+def run_war_room_simulation(profile, action_input, timeline=""):
     """
     Executes a Monte Carlo strategic simulation (Smart Retrieval).
-    
-    Upgrade: Now uses the 'Librarian' to find specific historical precedents, 
-    enemy capabilities (Lore), and reads recent scenes to understand the 
-    immediate tactical situation.
+    Respects Multiverse/Timeline isolation.
     """
     # 1. Retrieve Global Rules & Plan (Uses local helper wrapping DB)
-    rules, plan, _ = get_global_context(profile)
+    rules, plan, _ = get_global_context(profile, timeline)
     
     # 2. Retrieve World State (Direct DB call)
     state = db.get_world_state(profile)
@@ -974,12 +1201,12 @@ def run_war_room_simulation(profile, action_input):
     recent_history = get_last_scenes(profile)
     
     # 4. Smart Retrieval (Strategic Intelligence)
-    #    Uses the local function 'get_relevant_fragment_ids' defined earlier in backend.py
-    print(f"  [War Room] Gathering Intelligence for: '{action_input[:50]}...'")
+    print(f"  [War Room] Gathering Intelligence for: '{action_input[:50]}...' in timeline: '{timeline}'")
     relevant_ids = get_relevant_fragment_ids(
         profile, 
         user_query=f"Strategic analysis of: {action_input}", 
-        doc_types=["Lore", "Fact", "Rulebook", "Scene"]
+        doc_types=["Lore", "Fact", "Rulebook", "Scene"],
+        current_timeline=timeline
     )
     
     #    Uses DB Manager for efficient batch content fetching
@@ -1004,9 +1231,14 @@ def run_war_room_simulation(profile, action_input):
     {smart_intel}
     """
     
+    timeline_instruction = ""
+    if timeline:
+        timeline_instruction = f"\n*** ACTIVE UNIVERSE: [{timeline}] ***\nSimulate consequences strictly within the physics and continuity of this specific timeline. Do not calculate ripple effects into other universes.\n"
+
     # 6. The "Causality Report" Prompt (Exact Restoration)
     prompt = f"""
     ROLE: Strategic Simulation Engine.
+    {timeline_instruction}
     
     *** WORLD RULES & PHYSICS ***
     {rules}
@@ -1059,7 +1291,26 @@ def get_content_by_ids(profile_name, id_list):
     """
     return db.get_content_by_ids(profile_name, id_list)
 
-def get_global_context(profile_name: str):
+def _filter_rows_by_timeline(rows, target_timeline):
+    """
+    Helper to filter database rows based on the requested timeline.
+    Returns fragments that have NO timeline (Universal) or match the target exactly.
+    """
+    if not target_timeline:
+        return rows
+        
+    filtered = []
+    for r in rows:
+        # db.get_fragments returns: (id, source_filename, content, type, metadata, timeline)
+        row_timeline = r[5] if len(r) > 5 and r[5] else ""
+        
+        # Keep it if it has no timeline (Universal) or matches the target
+        if not row_timeline.strip() or row_timeline.strip().lower() == target_timeline.strip().lower():
+            filtered.append(r)
+            
+    return filtered
+
+def get_global_context(profile_name: str, current_timeline: str = ""):
     """
     Retrieves the 'Immutable' context layers that must be present in every generation cycle.
     1. Rules: The physics/magic/laws of the world.
@@ -1070,20 +1321,20 @@ def get_global_context(profile_name: str):
     # Index 2 is 'content'
     
     # World Rules
-    r_rows = db.get_fragments(profile_name, "Rulebook")
+    r_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Rulebook"), current_timeline)
     rules = "\n\n".join([r[2] for r in r_rows])
     
     # Strategic Plan
-    p_rows = db.get_fragments(profile_name, "Plan")
+    p_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Plan"), current_timeline)
     plan = p_rows[0][2] if p_rows else "NO PLAN ESTABLISHED."
     
     # Spoilers
-    s_rows = db.get_fragments(profile_name, "Spoiler")
+    s_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Spoiler"), current_timeline)
     spoilers = [r[2] for r in s_rows]
     
     return rules, plan, spoilers
 
-def get_full_context_data(profile_name: str):
+def get_full_context_data(profile_name: str, current_timeline: str = ""):
     """
     Retrieves ALL context layers (Lore, Rules, Plans, Facts, Spoilers).
     Used for heavy-duty analysis or deep simulation prompts.
@@ -1091,28 +1342,24 @@ def get_full_context_data(profile_name: str):
     # Helper to extract content string from rows
     def extract_text(rows): return "\n\n".join([r[2] for r in rows])
 
-    lore = extract_text(db.get_fragments(profile_name, "Lore"))
-    rules = extract_text(db.get_fragments(profile_name, "Rulebook"))
+    lore = extract_text(_filter_rows_by_timeline(db.get_fragments(profile_name, "Lore"), current_timeline))
+    rules = extract_text(_filter_rows_by_timeline(db.get_fragments(profile_name, "Rulebook"), current_timeline))
     
-    # Plan (Limit 1 usually, but here we take all if multiple exist)
-    p_rows = db.get_fragments(profile_name, "Plan")
+    p_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Plan"), current_timeline)
     plan = p_rows[0][2] if p_rows else "NO PLAN."
     
-    # Facts (Bulleted list style)
-    f_rows = db.get_fragments(profile_name, "Fact")
+    f_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Fact"), current_timeline)
     facts = "\n".join([f"- {r[2]}" for r in f_rows])
     
-    # Spoilers (List)
-    s_rows = db.get_fragments(profile_name, "Spoiler")
+    s_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Spoiler"), current_timeline)
     spoilers = [r[2] for r in s_rows]
     
     return lore, rules, plan, facts, spoilers
 
-def get_initial_lore(profile_name: str) -> str:
+def get_initial_lore(profile_name: str, current_timeline: str = "") -> str:
     """Fallback context provider for the initial session if no scenes exist."""
-    frags = db.get_fragments(profile_name, "Lore")
+    frags = _filter_rows_by_timeline(db.get_fragments(profile_name, "Lore"), current_timeline)
     if frags:
-        # Return the content of the most recent Lore entry
         return f"=== BACKGROUND LORE ===\n{frags[0][2]}"
     return "NO LORE ESTABLISHED. STARTING FRESH."
 
@@ -1122,13 +1369,13 @@ def get_fragments(profile_name: str, doc_type: Optional[str] = None):
     """Queries memory fragments."""
     return db.get_fragments(profile_name, doc_type)
 
-def add_fragment(profile_name, filename, content, doc_type):
+def add_fragment(profile_name, filename, content, doc_type, timeline=""):
     """Persists a new document to DB and File System."""
-    db.add_fragment(profile_name, filename, content, doc_type)
+    db.add_fragment(profile_name, filename, content, doc_type, timeline)
 
-def update_fragment(profile_name, frag_id, new_content):
+def update_fragment(profile_name, frag_id, new_content, timeline=""):
     """Updates content in DB and rewrites the file."""
-    db.update_fragment(profile_name, frag_id, new_content)
+    db.update_fragment(profile_name, frag_id, new_content, timeline)
 
 def rename_fragment(profile_name, frag_id, new_filename):
     """Updates the display label and renames the physical file."""
@@ -1142,21 +1389,27 @@ def delete_fragment(profile_name, frag_id):
 # 8. WORLD STATE TRACKER MODULE
 # ==========================================
 
-def analyze_state_changes(profile_name, scene_content):
+def analyze_state_changes(profile_name, scene_content, timeline=""):
     """
     Executes an LLM analysis of the scene to auto-update the world state (JSON).
     Detects changes in allies, assets, skills, reputation, AND abstract World Variables.
+    Multiverse-aware to prevent cross-contamination.
     """
     # Fetch state via DB Manager
     state = db.get_world_state(profile_name)
     
+    timeline_instruction = ""
+    if timeline:
+        timeline_instruction = f"\n*** CRITICAL MULTIVERSE RULE ***\nThese scenes take place STRICTLY in the timeline: [{timeline}]. Only update variables, assets, and character statuses that apply to this specific reality. Do NOT alter facts for other timelines.\n"
+
     prompt = f"""
     ROLE: World State Database Manager.
     
     TASK: Analyze the TEXT CONTENT (Scene, Lore, or Plan) and update the JSON STATE.
+    {timeline_instruction}
     
     *** CURRENT STATE ***
-    {json.dumps(state)}
+    {format_state_for_llm(state)}
     
     *** NARRATIVE SCENE ***
     {scene_content}
@@ -1354,17 +1607,18 @@ def undo_last_reaction_text(profile_name, filename, faction):
 def delete_last_faction_reaction(profile, faction):
     db.delete_last_faction_reaction(profile, faction)
 
-def generate_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard", custom_instructions=""):
+def generate_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard", custom_instructions="", timeline=""):
     """
     Simulates a faction's reaction (Adaptive Formats).
     Includes 'Format Adaptation' to transmute anachronistic requests (e.g., 'Twitter' in 1200 AD -> 'Town Crier').
+    Respects Multiverse/Timeline isolation.
     """
     # 1. Alias Resolution (Uses local backend helper)
     true_faction = resolve_faction_alias(profile_name, faction)
     print(f"  [Identity] Resolved '{faction}' -> '{true_faction}'")
 
     # 2. Retrieve Global Context
-    rules, plan, _ = get_global_context(profile_name)
+    rules, plan, _ = get_global_context(profile_name, timeline)
     state = db.get_world_state(profile_name)
     content = db.read_file_content(profile_name, filename)
     settings = db.get_story_settings(profile_name)
@@ -1383,7 +1637,8 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     relevant_ids = get_relevant_fragment_ids(
         profile_name, 
         user_query=query, 
-        doc_types=["Lore", "Fact", "Rulebook", "Scene"]
+        doc_types=["Lore", "Fact", "Rulebook", "Scene"],
+        current_timeline=timeline
     )
     smart_facts = db.get_content_by_ids(profile_name, relevant_ids)
     
@@ -1405,11 +1660,16 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
             "You DO NOT know what happened in the redacted sections. Do NOT guess accurately."
         )
 
+    timeline_instruction = ""
+    if timeline:
+        timeline_instruction = f"\n*** ACTIVE UNIVERSE: [{timeline}] ***\nReact strictly based on the history, tech, and facts of this specific timeline.\n"
+
     # 8. Prompt Construction (ADAPTIVE FORMATS)
     prompt = f"""
     ROLE: Narrative Simulator (Grounded in History & State).
     TARGET FACTION: {true_faction}
     CURRENT YEAR/ERA: {era_display}
+    {timeline_instruction}
     
     *** WORLD STATE & DATA ***
     Character Roster: {json.dumps(state.get('Cast', []))}
@@ -1460,12 +1720,12 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     clean_style = format_style.split("->")[-1].strip()
     header = f"\n\n>>> REACTION: {true_faction} | {clean_style} <<<\n"
     
-    with open(os.path.join(paths['output'], filename), "a", encoding="utf-8") as f:
+    full_filepath = os.path.join(paths['output'], filename)
+    
+    with open(full_filepath, "a", encoding="utf-8") as f:
         f.write(header + res + "\n")
 
-    # 11. [NEW: SYNC TO DATABASE]
-    # Read the updated file content (which now includes the appended reaction)
-    # and update the Scene Database so the Smart Search can read the reaction later.
+    # 11. Sync to database
     with open(full_filepath, "r", encoding="utf-8") as f:
         full_updated_content = f.read()
         

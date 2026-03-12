@@ -18,8 +18,8 @@ import 'reactflow/dist/style.css';
 import axios from 'axios';
 import { Save, ArrowDown, ArrowRight, CircleDot, ZoomIn, ZoomOut, Maximize, Layers } from 'lucide-react';
 import dagre from 'dagre';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from './config';
+import { toast, confirm } from './components/Notifications';
 
 // --- CONFIGURATION ---
 const NODE_WIDTH = 220;
@@ -454,7 +454,7 @@ function GraphEditor({ profile }) {
   const savePositions = async () => {
     const updates = nodes.map(n => ({ id: n.id, position: n.position }));
     await axios.post(`${API_URL}/graph/${profile}`, { updates });
-    alert("Layout Saved!");
+    toast("Layout Saved!", "success");
   };
 
   return (

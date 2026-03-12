@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { EyeOff, Trash2, AlertTriangle, Plus } from 'lucide-react';
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from '../config';
+import { toast } from '../components/Notifications';
 
 export default function SpoilersTab({ profile }) {
   const [spoilers, setSpoilers] = useState([]);
@@ -30,14 +30,14 @@ export default function SpoilersTab({ profile }) {
       });
       setNewBan("");
       fetchSpoilers();
-    } catch (err) { alert("Failed to add ban."); }
+    } catch (err) { toast("Failed to add ban.", "error"); }
   };
 
   const handleDelete = async (id) => {
     try {
       await axios.post(`${API_URL}/knowledge/delete/${profile}`, { id });
       fetchSpoilers();
-    } catch (err) { alert("Failed to delete."); }
+    } catch (err) { toast("Failed to delete.", "error"); }
   };
 
   return (
