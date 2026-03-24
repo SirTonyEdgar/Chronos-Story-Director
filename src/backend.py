@@ -283,15 +283,19 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
     TASK: Generate searchable metadata for the text below.
     
     INSTRUCTION: Read the text and extract:
-    1. A single 1-sentence summary of the main event.
+    1. A single 1-sentence summary of the main content.
     2. A comma-separated list of all proper nouns (Characters, Locations, Factions, Unique Items).
+    3. The time period covered (year, year range, or era).
+    4. 3-5 keyword topics describing the content type.
     
     OUTPUT FORMAT STRICTLY AS:
     Summary: [sentence]
     Entities: [Name1, Name2, Name3]
+    Period: [e.g. "2005-2019" or "1984-2000" or "2003"]
+    Topics: [topic1, topic2, topic3]
     
     TEXT:
-    {content[:3000]}  # Limit to 3000 chars to save tokens and speed up processing
+    {content[:8000]}
     """
 
     llm = get_llm(profile_name, "chat")
@@ -355,7 +359,7 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     - If the user mentions a specific character, location, or event, check the 'Entities' and 'Summary' to find the right file.
     {timeline_instruction}
     - Select ONLY highly relevant items.
-    - Max 7 items.
+    - Max 10 items.
     
     OUTPUT FORMAT: JSON List of integers ONLY. Example: [1, 14, 22]
     If nothing is relevant, output: []
@@ -888,7 +892,15 @@ def generate_scene(
     workflow.add_edge("planner", "drafter")
     workflow.add_edge("drafter", "validator")
     
-    workflow.add_conditional_edges("validator", lambda s: END if s['is_grounded'] or s['revision_count'] > 2 else "drafter")
+    def route_after_validation(state):
+        if state['is_grounded']:
+            return END
+        if state['revision_count'] > 2:
+            print(f"  [WARNING] Revision cap hit on scene '{state.get('scene_title', 'Unknown')}' — force-passing unverified draft.")
+            return END
+        return "drafter"
+
+    workflow.add_conditional_edges("validator", route_after_validation)
     app = workflow.compile()
     
     # 2. Context Assembly
@@ -898,7 +910,7 @@ def generate_scene(
             if fname == "Auto (Last 3 Scenes)": 
                 context_str += get_last_scenes(profile)
             else: 
-                context_str += f"\n=== CONTEXT: {fname} ===\n{db.read_file_content(profile, fname)[:5000]}\n"
+                context_str += f"\n=== CONTEXT: {fname} ===\n{db.read_file_content(profile, fname)}\n"
     else: 
         frags = db.get_fragments(profile, "Lore")
         context_str = f"=== BACKGROUND LORE ===\n{frags[0][2]}" if frags else "NO LORE ESTABLISHED."
@@ -1633,7 +1645,7 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     past_reactions = db.get_recent_faction_memory(profile_name, true_faction)
     
     # 5. Smart Retrieval (Context for the Faction)
-    query = f"Faction '{true_faction}' reacting to scene content: {content[:800]}..."
+    query = f"Faction '{true_faction}' reacting to scene content: {content[:3000]}..."
     relevant_ids = get_relevant_fragment_ids(
         profile_name, 
         user_query=query, 
