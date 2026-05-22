@@ -1468,6 +1468,44 @@ def get_initial_lore(profile_name: str, current_timeline: str = "") -> str:
         return f"=== BACKGROUND LORE ===\n{frags[0][2]}"
     return "NO LORE ESTABLISHED. STARTING FRESH."
 
+def extract_text_from_upload(filename: str, content_bytes: bytes) -> Optional[str]:
+    """
+    Extracts plain text from an uploaded file.
+    Supports .txt, .md, .json, .pdf, and .docx.
+    """
+    from io import BytesIO
+
+    fname = filename.lower()
+
+    if fname.endswith(".txt") or fname.endswith(".md") or fname.endswith(".json"):
+        try:
+            return content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return content_bytes.decode("latin-1", errors="ignore")
+
+    elif fname.endswith(".pdf"):
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(BytesIO(content_bytes))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            text = "\n\n".join(p.strip() for p in pages if p.strip())
+            return text if text else None
+        except Exception as e:
+            print(f"PDF extraction error: {e}")
+            return None
+
+    elif fname.endswith(".docx"):
+        try:
+            from docx import Document
+            doc = Document(BytesIO(content_bytes))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            return "\n\n".join(paragraphs) if paragraphs else None
+        except Exception as e:
+            print(f"DOCX extraction error: {e}")
+            return None
+
+    return None
+
 # --- CRUD PROXIES (Bridge to Database Manager) ---
 
 def get_fragments(profile_name: str, doc_type: Optional[str] = None):

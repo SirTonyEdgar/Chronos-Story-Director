@@ -9,7 +9,7 @@ License: MIT
 """
 
 from . import backend as engine
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
@@ -339,6 +339,26 @@ def delete_knowledge_entry(profile: str, req: DeleteRequest):
     engine.delete_fragment(profile, req.id)
     return {"status": "Deleted"}
 
+@app.post("/knowledge/import_file/{profile}")
+async def import_knowledge_file(profile: str, file: UploadFile = File(...)):
+    """
+    Accepts a .txt, .md, .pdf, or .docx file upload and extracts its text content.
+    Returns the extracted text for the frontend to populate the editor.
+    """
+    try:
+        filename = file.filename
+        content_bytes = await file.read()
+
+        text = engine.extract_text_from_upload(filename, content_bytes)
+
+        if text is None:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type or extraction failed for: {filename}")
+
+        return {"filename": filename, "text": text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
 # 5. 📊 WORLD STATE TRACKER MODULE

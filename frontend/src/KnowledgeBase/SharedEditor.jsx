@@ -205,30 +205,42 @@ export default function SharedEditor({ profile, category, icon, color, descripti
     if (fileInputRef.current) fileInputRef.current.click();
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+      if (!file) return;
 
-    setSelectedId(null);
-    setEditTitle(file.name); 
+      const fname = file.name.toLowerCase();
+      const isText = fname.endsWith(".txt") || fname.endsWith(".md") || fname.endsWith(".json");
+      const needsBackend = fname.endsWith(".pdf") || fname.endsWith(".docx");
 
-    const reader = new FileReader();
+      setSelectedId(null);
+      setEditTitle(file.name);
 
-    if (file.type === "text/plain" || file.name.endsWith(".md") || file.name.endsWith(".txt") || file.name.endsWith(".json")) {
-      reader.onload = (event) => {
-        setEditContent(event.target.result);
-      };
-      reader.readAsText(file);
-    } 
-    else if (file.type === "application/pdf") {
-      toast("PDF imported — paste text content manually until OCR is enabled.", "warning");
-      setEditContent(`[PDF Imported: ${file.name}]\n\n(Please copy/paste text content here manually until OCR is enabled.)`);
-    } 
-    else {
-      toast("Unsupported file type. Use .txt, .md, or .json.", "warning");
-    }
+      if (isText) {
+          const reader = new FileReader();
+          reader.onload = (event) => setEditContent(event.target.result);
+          reader.readAsText(file);
+      } else if (needsBackend) {
+          toast(`Extracting text from ${fname.endsWith(".pdf") ? "PDF" : "Word document"}...`, "info");
+          try {
+              const formData = new FormData();
+              formData.append("file", file);
+              const res = await axios.post(
+                  `${API_URL}/knowledge/import_file/${profile}`,
+                  formData,
+                  { headers: { "Content-Type": "multipart/form-data" } }
+              );
+              setEditContent(res.data.text);
+              toast("File imported successfully. Review and save.", "success");
+          } catch (err) {
+              toast("Extraction failed: " + (err.response?.data?.detail || err.message), "error");
+              setEditContent("");
+          }
+      } else {
+          toast("Unsupported file type. Use .txt, .md, .json, .pdf, or .docx.", "warning");
+      }
 
-    e.target.value = null;
+      e.target.value = null;
   };
 
   const filteredItems = items.filter(i => 
@@ -243,7 +255,7 @@ export default function SharedEditor({ profile, category, icon, color, descripti
         ref={fileInputRef} 
         onChange={handleFileChange} 
         style={{ display: 'none' }} 
-        accept=".txt,.md,.json,.pdf"
+        accept=".txt,.md,.json,.pdf,.docx"
       />
 
       {/* --- LEFT SIDEBAR (NAVIGATION) --- */}
