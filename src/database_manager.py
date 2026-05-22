@@ -302,6 +302,15 @@ def update_fragment(profile_name, frag_id, new_content, new_timeline=None):
             
     conn.close()
 
+def update_fragment_metadata(profile_name: str, frag_id: int, new_metadata: str):
+    """Updates only the metadata field for a specific fragment."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE memory_fragments SET metadata = ? WHERE id = ?", (new_metadata, frag_id))
+    conn.commit()
+    conn.close()
+
 def delete_fragment(profile_name, frag_id):
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])

@@ -333,7 +333,8 @@ def list_knowledge_fragments(profile: str, category: str):
             "id": f[0], 
             "name": f[1], 
             "content": f[2], 
-            "timeline": f[5] if len(f) > 5 and f[5] else ""
+            "timeline": f[5] if len(f) > 5 and f[5] else "",
+            "metadata": f[4] if len(f) > 4 and f[4] else ""
         } 
         for f in fragments
     ]
@@ -353,6 +354,15 @@ def update_knowledge_entry(profile: str, item: KnowledgeItem):
     engine.update_fragment(profile, item.id, item.content, item.timeline)
     engine.rename_fragment(profile, item.id, item.name)
     return {"status": "Updated"}
+
+@app.post("/knowledge/metadata/{profile}/{fragment_id}")
+def update_fragment_metadata(profile: str, fragment_id: int, payload: dict):
+    """Saves manually edited metadata for a specific fragment."""
+    try:
+        engine.update_fragment_metadata(profile, fragment_id, payload.get("metadata", ""))
+        return {"status": "Metadata updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/knowledge/delete/{profile}")
 def delete_knowledge_entry(profile: str, req: DeleteRequest):

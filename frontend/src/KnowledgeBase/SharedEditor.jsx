@@ -105,6 +105,11 @@ export default function SharedEditor({ profile, category, icon, color, descripti
   const [isSaving, setIsSaving] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
 
+  // Metadata Panel
+  const [editMetadata, setEditMetadata] = useState("");
+  const [isSavingMeta, setIsSavingMeta] = useState(false);
+  const [showMeta, setShowMeta] = useState(false);
+
   // Refs
   const fileInputRef = useRef(null);
 
@@ -125,11 +130,14 @@ export default function SharedEditor({ profile, category, icon, color, descripti
         setEditTitle(item.name);
         setEditContent(item.content);
         setEditTimeline(item.timeline || "");
+        setEditMetadata(item.metadata || "");
+        setShowMeta(false); 
       }
     } else {
       setEditTitle("");
       setEditContent("");
       setEditTimeline("");
+      setEditMetadata("");  
     }
   }, [selectedId, items]);
 
@@ -175,6 +183,21 @@ export default function SharedEditor({ profile, category, icon, color, descripti
       toast("Save failed: " + (err.response?.data?.detail || err.message), "error");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveMetadata = async () => {
+    if (!selectedId) return;
+    setIsSavingMeta(true);
+    try {
+      await axios.post(`${API_URL}/knowledge/metadata/${profile}/${selectedId}`, {
+        metadata: editMetadata
+      });
+      toast("Metadata saved.", "success");
+    } catch (err) {
+      toast("Failed to save metadata: " + err.message, "error");
+    } finally {
+      setIsSavingMeta(false);
     }
   };
 
@@ -380,6 +403,54 @@ export default function SharedEditor({ profile, category, icon, color, descripti
           placeholder={placeholder || "Start writing or import a file..."}
           style={styles.textArea}
         />
+
+        {/* --- METADATA PANEL --- */}
+        {selectedId && (
+          <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a' }}>
+            <div
+              onClick={() => setShowMeta(!showMeta)}
+              style={{ padding: '10px 25px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <span style={{ fontSize: '11px', color: '#444', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Librarian Metadata
+              </span>
+              <span style={{ fontSize: '11px', color: '#444' }}>{showMeta ? '▲' : '▼'}</span>
+            </div>
+
+            {showMeta && (
+              <div style={{ padding: '0 25px 20px 25px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <p style={{ margin: 0, fontSize: '12px', color: '#52525b', lineHeight: '1.5' }}>
+                  This is what the Librarian uses to decide whether to retrieve this document. Edit it to improve retrieval accuracy.
+                </p>
+                <textarea
+                  value={editMetadata}
+                  onChange={e => setEditMetadata(e.target.value)}
+                  placeholder="No metadata generated yet. Generate a scene or re-run metadata to populate this."
+                  style={{
+                    width: '100%', background: '#111', border: '1px solid #27272a',
+                    color: '#a1a1aa', padding: '12px', borderRadius: '6px',
+                    fontSize: '12px', fontFamily: 'monospace', lineHeight: '1.6',
+                    resize: 'vertical', minHeight: '120px', outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={handleSaveMetadata}
+                    disabled={isSavingMeta}
+                    style={{
+                      padding: '7px 16px', background: '#27272a', border: '1px solid #3f3f46',
+                      color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer',
+                      fontSize: '12px', fontWeight: '600'
+                    }}
+                  >
+                    {isSavingMeta ? "Saving..." : "Save Metadata"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
