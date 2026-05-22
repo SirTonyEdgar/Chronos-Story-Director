@@ -938,7 +938,8 @@ def generate_scene(
     context_files: List[str], 
     use_fog_of_war: bool,
     part: int = 1,
-    timeline: str = ""
+    timeline: str = "",
+    override_outline: str = ""
 ) -> tuple[str, str]:
     """
     Entry point for the scene generation pipeline.
@@ -951,8 +952,13 @@ def generate_scene(
     workflow.add_node("validator", critique_scene)
     workflow.add_node("style_enforcer", enforce_style)
 
-    workflow.set_entry_point("planner")
-    workflow.add_edge("planner", "drafter")
+    if override_outline:
+        # Skip Planner — user provided a hand-edited outline
+        workflow.set_entry_point("drafter")
+    else:
+        workflow.set_entry_point("planner")
+        workflow.add_edge("planner", "drafter")
+
     workflow.add_edge("drafter", "validator")
 
     def route_after_validation(state):
@@ -1023,7 +1029,7 @@ def generate_scene(
         "time_str": final_time,
         "scene_title": temp_title,
         "scene_brief": brief,
-        "scene_outline": "",
+        "scene_outline": override_outline if override_outline else "",
         "timeline": timeline,
         "recent_context": context_str,
         "revision_count": 0,
@@ -1098,6 +1104,89 @@ def generate_scene(
     )
 
     return final_state['current_draft'], filepath
+
+def dry_run_scene(
+    profile: str,
+    year: int,
+    date_str: str,
+    time_str: str,
+    brief: str,
+    context_files: List[str],
+    timeline: str = ""
+) -> dict:
+    """
+    Runs only the Planner node — returns the beat sheet outline and retrieved
+    document titles without drafting any prose. Zero write operations.
+    """
+    # --- Context Assembly (mirrors generate_scene) ---
+    context_str = ""
+    if context_files:
+        for fname in context_files:
+            if fname == "Auto (Last 3 Scenes)":
+                context_str += get_last_scenes(profile)
+            else:
+                context_str += f"\n=== CONTEXT: {fname} ===\n{db.read_file_content(profile, fname)}\n"
+    else:
+        frags = db.get_fragments(profile, "Lore")
+        context_str = f"=== BACKGROUND LORE ===\n{frags[0][2]}" if frags else "NO LORE ESTABLISHED."
+
+    settings = db.get_story_settings(profile)
+
+    use_time = settings.get('use_time_system', 'true').lower() == 'true'
+    final_year = year
+    final_date = date_str
+    final_time = time_str
+
+    if use_time and (not final_year or not final_date or not final_time):
+        inferred = infer_header_data(brief, context_str, settings, profile)
+        if not final_year: final_year = inferred.get('year', 0)
+        if not final_date: final_date = inferred.get('date', "")
+        if not final_time: final_time = inferred.get('time', "")
+
+    try: final_year = int(final_year)
+    except: final_year = 0
+
+    # --- Build minimal StoryState for plan_scene ---
+    state = {
+        "profile_name": profile,
+        "chapter_num": None,
+        "part_num": 1,
+        "year": final_year,
+        "date_str": final_date,
+        "time_str": final_time,
+        "scene_title": "Dry Run",
+        "scene_brief": brief,
+        "scene_outline": "",
+        "timeline": timeline,
+        "recent_context": context_str,
+        "revision_count": 0,
+        "critique_notes": "",
+        "style_notes": "",
+        "style_result": "",
+        "is_grounded": False,
+        "current_draft": "",
+        "banned_words": "",
+        "use_fog_of_war": False,
+        "context_files": context_files,
+        "retrieved_ids": [],
+    }
+
+    # --- Run only the Planner ---
+    result = plan_scene(state)
+
+    # --- Resolve retrieved document titles ---
+    retrieved_ids = result.get("retrieved_ids", [])
+    retrieved_titles = db.get_fragment_titles_by_ids(profile, retrieved_ids)
+
+    return {
+        "outline": result.get("scene_outline", ""),
+        "retrieved_titles": retrieved_titles,
+        "retrieved_ids": retrieved_ids,
+        "active_spoilers": result.get("banned_words", ""),
+        "inferred_year": final_year,
+        "inferred_date": final_date,
+        "inferred_time": final_time,
+    }
 
 def save_edited_scene(profile: str, filename: str, content: str) -> tuple[bool, str]:
     """

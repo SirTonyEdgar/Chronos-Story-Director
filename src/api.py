@@ -48,6 +48,7 @@ class SceneGenerationRequest(BaseModel):
     context_files: List[str] = []
     fog_of_war: bool = False
     timeline: str = ""
+    override_outline: str = ""
 
 class SceneEditRequest(BaseModel):
     filename: str
@@ -204,9 +205,29 @@ def generate_new_scene(profile: str, payload: SceneGenerationRequest):
             profile, payload.chapter, payload.year, payload.date_str, 
             payload.time_str, payload.title, payload.brief, 
             payload.context_files, use_fog_of_war=payload.fog_of_war,
-            timeline=payload.timeline
+            timeline=payload.timeline,
+            override_outline=payload.override_outline
         )
         return {"status": "Success", "filename": os.path.basename(path), "content": text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/scene/dry_run/{profile}")
+def dry_run_scene(profile: str, payload: SceneGenerationRequest):
+    """
+    Runs the Planner only — returns outline and retrieved documents without drafting.
+    """
+    try:
+        result = engine.dry_run_scene(
+            profile=profile,
+            year=payload.year,
+            date_str=payload.date_str,
+            time_str=payload.time_str,
+            brief=payload.brief,
+            context_files=payload.context_files,
+            timeline=payload.timeline
+        )
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

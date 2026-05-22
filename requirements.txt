@@ -16,3 +16,4 @@ pandas
 fpdf2
 EbookLib
 python-docx
+python-multipart

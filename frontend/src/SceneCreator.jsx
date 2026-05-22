@@ -3,14 +3,14 @@ import axios from 'axios';
 import { 
   Play, Save, Trash2, RefreshCw, 
   PenTool, BookOpen, Edit, FileMinus, 
-  Clock, ChevronDown, Check, X, Merge, Plus
+  Clock, ChevronDown, Check, X, Merge, Plus,
+  FlaskConical, FileText, AlertTriangle
 } from 'lucide-react';
 import { API_URL } from './config';
 import { toast, confirm } from './components/Notifications';
 
 /**
  * MultiSelect Component
- * A custom dropdown for selecting multiple context files.
  */
 const MultiSelect = ({ options, selected, onChange, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -99,6 +99,106 @@ const MultiSelect = ({ options, selected, onChange, placeholder }) => {
 };
 
 /**
+ * Dry Run Modal Component
+ */
+const DryRunModal = ({ result, onClose, onProceed, onOutlineChange }) => {
+  if (!result) return null;
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={styles.modalBox}>
+
+        {/* Header */}
+        <div style={styles.modalHeader}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <FlaskConical size={20} color="#22c55e" />
+            <h3 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>Dry Run — Planner Output</h3>
+          </div>
+          <button onClick={onClose} style={styles.modalClose}><X size={18} /></button>
+        </div>
+
+        <div style={styles.modalBody}>
+
+          {/* Inferred Chronology */}
+          {(result.inferred_year || result.inferred_date || result.inferred_time) && (
+            <div style={styles.dryRunSection}>
+              <div style={styles.dryRunLabel}>INFERRED CHRONOLOGY</div>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {result.inferred_year > 0 && (
+                  <span style={styles.dryRunChip}>Year: {result.inferred_year}</span>
+                )}
+                {result.inferred_date && (
+                  <span style={styles.dryRunChip}>Date: {result.inferred_date}</span>
+                )}
+                {result.inferred_time && (
+                  <span style={styles.dryRunChip}>Time: {result.inferred_time}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Retrieved Documents */}
+          <div style={styles.dryRunSection}>
+            <div style={styles.dryRunLabel}>
+              DOCUMENTS RETRIEVED BY LIBRARIAN ({result.retrieved_titles.length})
+            </div>
+            {result.retrieved_titles.length === 0 ? (
+              <div style={{ color: '#52525b', fontSize: '13px', fontStyle: 'italic' }}>
+                No documents retrieved. The Librarian found no relevant fragments.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {result.retrieved_titles.map((t, i) => (
+                  <span key={i} style={styles.logTag}>{t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Active Spoilers */}
+          {result.active_spoilers && (
+            <div style={styles.dryRunSection}>
+              <div style={styles.dryRunLabel}>ACTIVE SPOILER BLOCKS</div>
+              <div style={{ color: '#f87171', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.6' }}>
+                {result.active_spoilers}
+              </div>
+            </div>
+          )}
+
+          {/* Beat Sheet Outline */}
+          <div style={styles.dryRunSection}>
+            <div style={styles.dryRunLabel}>PLANNER BEAT SHEET</div>
+            <textarea
+              value={result.outline}
+              onChange={e => onOutlineChange(e.target.value)}
+              style={{ ...styles.outlineBox, resize: 'vertical', minHeight: '200px', cursor: 'text', fontFamily: 'inherit' }}
+            />
+          </div>
+
+          {/* Warning */}
+          <div style={styles.dryRunWarning}>
+            <AlertTriangle size={14} color="#f59e0b" />
+            <span>Review the outline and retrieved documents. If something looks wrong, close and adjust your brief or context before generating.</span>
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div style={styles.modalFooter}>
+          <button onClick={onClose} style={styles.modalCancelBtn}>
+            Adjust Brief
+          </button>
+          <button onClick={onProceed} style={styles.modalProceedBtn}>
+            <Play size={16} /> Generate Full Scene
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+/**
  * Scene Creator Module
  */
 export default function SceneCreator({ profile }) { 
@@ -145,6 +245,10 @@ export default function SceneCreator({ profile }) {
   const [generationLog, setGenerationLog] = useState(null);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
   const [showLog, setShowLog] = useState(false);
+
+  // --- DRY RUN STATE ---
+  const [isDryRunning, setIsDryRunning] = useState(false);
+  const [dryRunResult, setDryRunResult] = useState(null);
 
   // --- INITIALIZATION ---
 
@@ -211,31 +315,50 @@ export default function SceneCreator({ profile }) {
     } catch (err) { console.error("Refresh failed:", err); }
   };
 
+  // --- SHARED PAYLOAD BUILDER ---
+  const buildPayload = (overrideOutline = "") => ({
+    chapter: parseInt(chapter) || null,
+    title: title,
+    year: parseInt(year) || 0,
+    date_str: dateStr,
+    time_str: timeStr,
+    brief: brief,
+    context_files: selectedContext,
+    fog_of_war: fogOfWar,
+    timeline: timeline,
+    override_outline: overrideOutline
+  });
+
   // --- ACTIONS ---
 
-  const handleGenerate = async () => {
+  const handleDryRun = async () => {
     if (!brief) return toast("Please provide a Scene Brief.", "warning");
-    
+    setIsDryRunning(true);
+    try {
+      const res = await axios.post(`${API_URL}/scene/dry_run/${profile}`, buildPayload());
+      setDryRunResult(res.data);
+    } catch (err) {
+      toast("Dry run failed: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsDryRunning(false);
+    }
+  };
+
+  const handleDryRunOutlineChange = (newOutline) => {
+    setDryRunResult(prev => ({ ...prev, outline: newOutline }));
+  };
+
+  const handleGenerate = async (overrideOutline = "") => {
+    if (!brief) return toast("Please provide a Scene Brief.", "warning");
+    setDryRunResult(null);
     setIsGenerating(true);
     try {
-      const res = await axios.post(`${API_URL}/scene/generate/${profile}`, {
-        chapter: parseInt(chapter) || null,
-        title: title,
-        year: parseInt(year) || 0,
-        date_str: dateStr,
-        time_str: timeStr,
-        brief: brief,
-        context_files: selectedContext,
-        fog_of_war: fogOfWar,
-        timeline: timeline
-      });
-      
+      const res = await axios.post(`${API_URL}/scene/generate/${profile}`, buildPayload(overrideOutline));
       await refreshFileList();
       setSelectedFile(res.data.filename);
       setFileContent(res.data.content);
       setActiveTab("read");
       fetchGenerationLog(res.data.filename);
-      
     } catch (err) {
       console.error(err);
       toast("Generation failed: " + (err.response?.data?.detail || err.message), "error");
@@ -349,6 +472,17 @@ export default function SceneCreator({ profile }) {
 
   return (
     <div style={styles.scrollWrapper}>
+
+      {/* --- DRY RUN MODAL --- */}
+      {dryRunResult && (
+        <DryRunModal
+          result={dryRunResult}
+          onClose={() => setDryRunResult(null)}
+          onProceed={() => { const outline = dryRunResult?.outline || ""; setDryRunResult(null); handleGenerate(outline); }}
+          onOutlineChange={handleDryRunOutlineChange}
+        />
+      )}
+
       <div style={styles.container}>
         
         {/* --- MODULE HEADER --- */}
@@ -528,13 +662,27 @@ export default function SceneCreator({ profile }) {
               </label>
             </div>
 
-            <button 
-              onClick={handleGenerate} 
-              disabled={isGenerating} 
-              style={styles.primaryButton}
-            >
-              {isGenerating ? "Drafting Scene (This may take a minute)..." : <><Play size={16} /> Generate Scene</>}
-            </button>
+            {/* Row 6: Action Buttons */}
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button 
+                onClick={handleDryRun} 
+                disabled={isDryRunning || isGenerating} 
+                style={styles.dryRunButton}
+                title="Run only the Planner — see the outline and retrieved documents before spending tokens on the full draft"
+              >
+                {isDryRunning 
+                  ? "Running Planner..." 
+                  : <><FlaskConical size={16} /> Dry Run</>
+                }
+              </button>
+              <button 
+                onClick={handleGenerate} 
+                disabled={isGenerating || isDryRunning} 
+                style={{ ...styles.primaryButton, flex: 1 }}
+              >
+                {isGenerating ? "Drafting Scene (This may take a minute)..." : <><Play size={16} /> Generate Scene</>}
+              </button>
+            </div>
           </div>
         )}
 
@@ -813,6 +961,13 @@ const styles = {
     borderRadius: '6px', cursor: 'pointer', fontWeight: '600', display: 'flex', 
     alignItems: 'center', justifyContent: 'center', gap: '10px', transition: 'background 0.2s' 
   },
+  dryRunButton: {
+    padding: '12px 20px', background: 'transparent', color: '#22c55e',
+    border: '1px solid #22c55e', borderRadius: '6px', cursor: 'pointer',
+    fontWeight: '600', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', gap: '10px', transition: 'all 0.2s',
+    whiteSpace: 'nowrap'
+  },
   iconButton: { 
     padding: '10px', background: '#27272a', border: '1px solid #3f3f46', color: '#fff', 
     borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' 
@@ -852,5 +1007,63 @@ const styles = {
   logTag: {
     fontSize: '12px', background: '#1e293b', border: '1px solid #334155',
     color: '#94a3b8', padding: '3px 8px', borderRadius: '4px'
+  },
+
+  // Dry Run Modal
+  modalOverlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
+    zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    backdropFilter: 'blur(2px)'
+  },
+  modalBox: {
+    background: '#111', border: '1px solid #27272a', borderRadius: '10px',
+    width: '700px', maxWidth: '90vw', maxHeight: '85vh',
+    display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.8)'
+  },
+  modalHeader: {
+    padding: '20px 24px', borderBottom: '1px solid #27272a',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+  },
+  modalClose: {
+    background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', padding: '4px'
+  },
+  modalBody: {
+    flex: 1, overflowY: 'auto', padding: '24px',
+    display: 'flex', flexDirection: 'column', gap: '20px'
+  },
+  modalFooter: {
+    padding: '16px 24px', borderTop: '1px solid #27272a',
+    display: 'flex', justifyContent: 'flex-end', gap: '12px'
+  },
+  modalCancelBtn: {
+    padding: '10px 18px', background: 'transparent', border: '1px solid #3f3f46',
+    color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px'
+  },
+  modalProceedBtn: {
+    padding: '10px 20px', background: '#ef4444', border: 'none',
+    color: '#fff', borderRadius: '6px', cursor: 'pointer', fontWeight: '700',
+    fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px'
+  },
+  dryRunSection: {
+    display: 'flex', flexDirection: 'column', gap: '8px'
+  },
+  dryRunLabel: {
+    fontSize: '10px', color: '#52525b', fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: '0.5px'
+  },
+  dryRunChip: {
+    fontSize: '12px', background: '#1e293b', border: '1px solid #334155',
+    color: '#94a3b8', padding: '3px 10px', borderRadius: '12px'
+  },
+  outlineBox: {
+    background: '#0a0a0a', border: '1px solid #27272a', borderRadius: '6px',
+    padding: '16px', fontSize: '14px', lineHeight: '1.8', color: '#d4d4d8',
+    whiteSpace: 'pre-wrap', fontFamily: 'inherit'
+  },
+  dryRunWarning: {
+    display: 'flex', alignItems: 'flex-start', gap: '10px',
+    padding: '12px', background: 'rgba(245,158,11,0.05)',
+    border: '1px solid rgba(245,158,11,0.2)', borderRadius: '6px',
+    fontSize: '12px', color: '#a1a1aa', lineHeight: '1.5'
   }
 };
