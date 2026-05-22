@@ -126,6 +126,12 @@ class UndoReactionRequest(BaseModel):
 class CompileRequest(BaseModel):
     filenames: List[str]
 
+class DocxExportRequest(BaseModel):
+    filenames: List[str]
+    font_name: str = "Times New Roman"
+    font_size: int = 12
+    margin_cm: float = 2.54
+
 
 # ==========================================
 # 0. 👤 PROFILE MANAGEMENT
@@ -543,6 +549,27 @@ def compile_text_preview(profile: str, payload: CompileRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/compiler/export/{profile}/docx")
+def export_docx_manuscript(profile: str, payload: DocxExportRequest):
+    """Streams a formatted .docx Word document to the client."""
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        data = engine.compile_docx_manuscript(
+            profile,
+            payload.filenames,
+            font_name=payload.font_name,
+            font_size=payload.font_size,
+            margin_cm=payload.margin_cm
+        )
+        return Response(
+            content=data,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={profile}_Manuscript_{timestamp}.docx"}
+        )
+    except Exception as e:
+        print(f"DOCX Export Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/compiler/export/{profile}/{file_format}")
 def export_binary_manuscript(profile: str, file_format: str, payload: CompileRequest):
     """Streams binary file (PDF/EPUB) to the client."""
@@ -578,7 +605,6 @@ def export_binary_manuscript(profile: str, file_format: str, payload: CompileReq
     except Exception as e:
         print(f"Export Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ==========================================
 # 9. ⚙️ SETTINGS MODULE

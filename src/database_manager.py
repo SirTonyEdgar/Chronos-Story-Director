@@ -17,6 +17,10 @@ try:
     from pypdf import PdfReader
 except ImportError:
     PdfReader = None
+try:
+    from docx import Document as DocxDocument
+except ImportError:
+    DocxDocument = None
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -682,7 +686,9 @@ def ingest_profile_data(profile_name: str):
 
     for doc_type, folder_path in source_dirs.items():
         if not os.path.exists(folder_path): continue
-        files = glob.glob(os.path.join(folder_path, "*.txt")) + glob.glob(os.path.join(folder_path, "*.pdf"))
+        files = (glob.glob(os.path.join(folder_path, "*.txt")) + 
+                 glob.glob(os.path.join(folder_path, "*.pdf")) +
+                 glob.glob(os.path.join(folder_path, "*.docx")))
         
         for filepath in files:
             filename = os.path.basename(filepath)
@@ -690,9 +696,13 @@ def ingest_profile_data(profile_name: str):
             if c.fetchone(): continue
 
             content = None
-            if filename.endswith(".txt"): content = read_text_safe(filepath)
+            if filename.endswith(".txt"): 
+                content = read_text_safe(filepath)
             elif filename.endswith(".pdf") and PdfReader:
                 try: content = "".join([page.extract_text() for page in PdfReader(filepath).pages])
+                except: pass
+            elif filename.endswith(".docx") and DocxDocument:
+                try: content = "\n".join([p.text for p in DocxDocument(filepath).paragraphs if p.text.strip()])
                 except: pass
             
             if content:
