@@ -137,8 +137,9 @@ export default function Settings({ profile }) {
     setHasUnsavedChanges(true);
   };
 
-  const removeTimeline = (index) => {
-    if (!confirm("Delete this timeline?")) return;
+  const removeTimeline = async (index) => {
+    const ok = await confirm("Delete this timeline?");
+    if (!ok) return;
     const newTimelines = [...timelines];
     newTimelines.splice(index, 1);
     setTimelines(newTimelines);

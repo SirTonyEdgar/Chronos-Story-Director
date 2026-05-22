@@ -154,6 +154,19 @@ def init_db(profile_name: str):
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS generation_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        filename TEXT,
+        brief TEXT,
+        retrieved_ids TEXT DEFAULT '[]',
+        retrieved_titles TEXT DEFAULT '[]',
+        revision_count INTEGER DEFAULT 1,
+        validator_result TEXT DEFAULT 'PASS',
+        active_spoilers TEXT DEFAULT '',
+        timeline TEXT DEFAULT '',
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     conn.commit()
     conn.close()
 
@@ -372,6 +385,102 @@ def save_world_state(profile_name: str, new_state_dict: Dict):
         with open(paths['state'], 'w') as f: json.dump(new_state_dict, f, indent=4)
         return True, "State Saved"
     except Exception as e: return False, str(e)
+
+def list_backups(profile_name: str) -> List[Dict]:
+    """Lists available world state backups, newest first."""
+    paths = get_paths(profile_name)
+    backup_files = sorted(
+        glob.glob(os.path.join(paths['data'], "world_state_backup_*.json")),
+        reverse=True
+    )
+    result = []
+    for f in backup_files:
+        filename = os.path.basename(f)
+        try:
+            ts_str = filename.replace("world_state_backup_", "").replace(".json", "")
+            ts = datetime.datetime.strptime(ts_str, "%Y%m%d_%H%M%S")
+            display = ts.strftime("%b %d, %Y — %H:%M:%S")
+        except Exception:
+            display = filename
+        result.append({"filename": filename, "display": display})
+    return result
+
+def restore_backup(profile_name: str, backup_filename: str):
+    """Restores a specific backup as the active world state."""
+    paths = get_paths(profile_name)
+    if not backup_filename.startswith("world_state_backup_") or not backup_filename.endswith(".json"):
+        return False, "Invalid backup filename."
+    backup_path = os.path.join(paths['data'], backup_filename)
+    if not os.path.exists(backup_path):
+        return False, "Backup file not found."
+    try:
+        with open(backup_path, 'r') as f:
+            backup_data = json.load(f)
+        save_world_state(profile_name, backup_data)
+        return True, "State restored successfully."
+    except Exception as e:
+        return False, str(e)
+
+def get_fragment_titles_by_ids(profile_name: str, id_list: List[int]) -> List[str]:
+    """Returns source_filename for a list of fragment IDs, in order."""
+    if not id_list: return []
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        placeholders = ','.join(['?'] * len(id_list))
+        c.execute(f"SELECT id, source_filename FROM memory_fragments WHERE id IN ({placeholders})", id_list)
+        id_to_title = {r[0]: r[1] for r in c.fetchall()}
+        return [id_to_title.get(i, f"ID:{i}") for i in id_list]
+    except Exception as e:
+        print(f"Title lookup error: {e}")
+        return []
+    finally:
+        conn.close()
+
+def save_generation_log(profile_name: str, filename: str, brief: str,
+                        retrieved_ids: str, retrieved_titles: str,
+                        revision_count: int, validator_result: str,
+                        active_spoilers: str, timeline: str):
+    """Saves a generation audit log entry for a scene."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=30)
+    c = conn.cursor()
+    c.execute(
+        """INSERT INTO generation_logs
+           (filename, brief, retrieved_ids, retrieved_titles, revision_count, validator_result, active_spoilers, timeline)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (filename, brief, retrieved_ids, retrieved_titles, revision_count, validator_result, active_spoilers, timeline)
+    )
+    conn.commit()
+    conn.close()
+
+def get_generation_log(profile_name: str, filename: str) -> dict:
+    """Retrieves the most recent generation log for a specific scene file."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        c.execute(
+            """SELECT filename, brief, retrieved_ids, retrieved_titles, revision_count,
+                      validator_result, active_spoilers, timeline, timestamp
+               FROM generation_logs WHERE filename = ? ORDER BY id DESC LIMIT 1""",
+            (filename,)
+        )
+        row = c.fetchone()
+        if not row: return None
+        return {
+            "filename": row[0], "brief": row[1],
+            "retrieved_ids": json.loads(row[2] or '[]'),
+            "retrieved_titles": json.loads(row[3] or '[]'),
+            "revision_count": row[4], "validator_result": row[5],
+            "active_spoilers": row[6], "timeline": row[7], "timestamp": row[8]
+        }
+    except Exception as e:
+        print(f"Log fetch error: {e}")
+        return None
+    finally:
+        conn.close()
 
 # ==========================================
 # --- PROJECT MANAGEMENT (WORLD STATE) ---

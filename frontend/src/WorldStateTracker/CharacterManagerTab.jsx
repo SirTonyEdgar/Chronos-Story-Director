@@ -198,7 +198,7 @@ export default function CharacterManagerTab({ state, setState, profile }) {
   const handleSettingBlur = async () => {
     setIsSavingSetting(true);
     try {
-      await axios.post(`${API_URL}/settings/update/${activeProfile}?key=protagonist&value=${settings.protagonist}`);
+      await axios.post(`${API_URL}/settings/update/${profile}?key=protagonist&value=${settings.protagonist}`);
     } catch (err) { console.error(err); } 
     finally { setTimeout(() => setIsSavingSetting(false), 600); }
   };

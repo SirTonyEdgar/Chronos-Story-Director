@@ -349,6 +349,34 @@ def save_world_state(profile: str, payload: Dict[str, Any]):
     engine.save_world_state(profile, payload)
     return {"status": "State Saved"}
 
+@app.get("/state/backups/{profile}")
+def list_state_backups(profile: str):
+    """Lists all available world state backups for rollback."""
+    try:
+        return engine.list_backups(profile)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/state/restore/{profile}")
+def restore_state_backup(profile: str, filename: str):
+    """Restores a specific backup as the active world state."""
+    try:
+        success, msg = engine.restore_backup(profile, filename)
+        if not success:
+            raise HTTPException(status_code=400, detail=msg)
+        return {"status": "Restored", "message": msg}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/scene/log/{profile}/{filename}")
+def get_scene_generation_log(profile: str, filename: str):
+    """Retrieves the generation audit log for a specific scene file."""
+    try:
+        log = engine.get_generation_log(profile, filename)
+        return {"log": log}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/state/analyze/{profile}")
 def analyze_state_changes(profile: str, payload: AnalysisRequest):
     """

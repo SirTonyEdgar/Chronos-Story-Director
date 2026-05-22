@@ -16,7 +16,6 @@ const MultiSelect = ({ options, selected, onChange, placeholder }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
-  // Handle outside clicks to close dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (containerRef.current && !containerRef.current.contains(event.target)) {
@@ -44,7 +43,6 @@ const MultiSelect = ({ options, selected, onChange, placeholder }) => {
     <div style={{ position: 'relative', width: '100%', marginBottom: '15px' }} ref={containerRef}>
       <label style={styles.label}>Transition From (Context)</label>
       
-      {/* Trigger Box */}
       <div 
         onClick={() => setIsOpen(!isOpen)}
         style={{
@@ -76,7 +74,6 @@ const MultiSelect = ({ options, selected, onChange, placeholder }) => {
         <ChevronDown size={16} color="#71717a" />
       </div>
 
-      {/* Dropdown Menu */}
       {isOpen && (
         <div style={styles.dropdownMenu}>
           {options.map(option => (
@@ -103,9 +100,6 @@ const MultiSelect = ({ options, selected, onChange, placeholder }) => {
 
 /**
  * Scene Creator Module
- * ====================
- * The primary narrative engine interface.
- * Features state persistence, AI generation, and granular context control.
  */
 export default function SceneCreator({ profile }) { 
   // --- NAVIGATION STATE ---
@@ -120,32 +114,22 @@ export default function SceneCreator({ profile }) {
   // --- DATA STATE ---
   const [files, setFiles] = useState([]);
   
-  // Configuration State
   const [useTimeSystem, setUseTimeSystem] = useState(true);
   const [useChapters, setUseChapters] = useState(true);
-  
-  // Granular Time Configs
   const [showYear, setShowYear] = useState(true);
   const [showDate, setShowDate] = useState(true);
   const [showClock, setShowClock] = useState(true);
 
-  // Generation Inputs
   const [chapter, setChapter] = useState(1);
   const [part, setPart] = useState(1);
   const [title, setTitle] = useState("");
   const [brief, setBrief] = useState("");
   const [timeline, setTimeline] = useState("");
   const [availableTimelines, setAvailableTimelines] = useState([]);
-  
-  // Context Selection
   const [selectedContext, setSelectedContext] = useState([]);
-
-  // Chronology Inputs
   const [year, setYear] = useState("");
   const [dateStr, setDateStr] = useState("");
   const [timeStr, setTimeStr] = useState("");
-  
-  // Toggles
   const [isGenerating, setIsGenerating] = useState(false);
   const [fogOfWar, setFogOfWar] = useState(false);
 
@@ -157,6 +141,11 @@ export default function SceneCreator({ profile }) {
   const [useParts, setUseParts] = useState(false);
   const [selectedManageFiles, setSelectedManageFiles] = useState([]);
 
+  // --- GENERATION LOG STATE ---
+  const [generationLog, setGenerationLog] = useState(null);
+  const [isLoadingLog, setIsLoadingLog] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+
   // --- INITIALIZATION ---
 
   useEffect(() => {
@@ -165,7 +154,6 @@ export default function SceneCreator({ profile }) {
 
   const sortFiles = (fileList) => {
     const chapterRegex = /^(?:Ch|Chapter)[_ ]?(\d+)(?:_Part_(\d+))?/i;
-    
     const chapters = [];
     const others = [];
 
@@ -206,7 +194,6 @@ export default function SceneCreator({ profile }) {
       const s = settingsRes.data;
       setUseTimeSystem(String(s.use_time_system).toLowerCase() === 'true');
       setUseChapters(String(s.enable_chapters || 'true').toLowerCase() === 'true');
-      
       setShowYear(String(s.enable_year || 'true').toLowerCase() === 'true');
       setShowDate(String(s.enable_date || 'true').toLowerCase() === 'true');
       setShowClock(String(s.enable_clock || 'true').toLowerCase() === 'true');
@@ -231,7 +218,6 @@ export default function SceneCreator({ profile }) {
     
     setIsGenerating(true);
     try {
-      // Fixed API endpoint and payload mapping
       const res = await axios.post(`${API_URL}/scene/generate/${profile}`, {
         chapter: parseInt(chapter) || null,
         title: title,
@@ -248,6 +234,7 @@ export default function SceneCreator({ profile }) {
       setSelectedFile(res.data.filename);
       setFileContent(res.data.content);
       setActiveTab("read");
+      fetchGenerationLog(res.data.filename);
       
     } catch (err) {
       console.error(err);
@@ -276,10 +263,26 @@ export default function SceneCreator({ profile }) {
 
   const handleReadFile = async (filename) => {
     setSelectedFile(filename);
+    setGenerationLog(null);
     try {
       const res = await axios.get(`${API_URL}/file/${profile}/${filename}`);
       setFileContent(res.data.content);
+      fetchGenerationLog(filename);
     } catch (err) { toast("Failed to load file content.", "error"); }
+  };
+
+  const fetchGenerationLog = async (filename) => {
+    if (!filename) return;
+    setIsLoadingLog(true);
+    try {
+      const res = await axios.get(`${API_URL}/scene/log/${profile}/${encodeURIComponent(filename)}`);
+      setGenerationLog(res.data.log || null);
+    } catch (err) {
+      console.error("Failed to fetch generation log:", err);
+      setGenerationLog(null);
+    } finally {
+      setIsLoadingLog(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -309,7 +312,9 @@ export default function SceneCreator({ profile }) {
     if (!secondConfirm) return;
 
     try {
-      await axios.post(`${API_URL}/files/bulk_delete/${profile}`, { filenames: selectedManageFiles });
+      for (const filename of selectedManageFiles) {
+        await axios.delete(`${API_URL}/scene/${profile}/${filename}`);
+      }
       toast("Files deleted successfully.", "success");
       refreshFileList();
       setSelectedManageFiles([]);
@@ -376,7 +381,6 @@ export default function SceneCreator({ profile }) {
                     />
                   </div>
                   
-                  {/* Part System Toggle */}
                   {useParts ? (
                     <div style={{ width: '60px', position: 'relative' }}>
                       <label style={styles.label}>Part</label>
@@ -387,7 +391,6 @@ export default function SceneCreator({ profile }) {
                         onChange={e => setPart(e.target.value)} 
                         style={{...styles.input, borderColor: '#3b82f6', color: '#60a5fa'}} 
                       />
-                      {/* Close Button to Disable Parts */}
                       <div 
                         onClick={() => setUseParts(false)}
                         style={{position:'absolute', top:'-5px', right:'-5px', background:'#333', borderRadius:'50%', cursor:'pointer', padding:'2px'}}
@@ -419,7 +422,6 @@ export default function SceneCreator({ profile }) {
                 />
               </div>
               
-              {/* Timeline Input / Dropdown */}
               <div style={{ flex: 1 }}>
                 <label style={styles.label}>Timeline (Multiverse)</label>
                 {availableTimelines.length > 0 ? (
@@ -445,7 +447,7 @@ export default function SceneCreator({ profile }) {
               </div>
             </div>
 
-            {/* Row 2: Chronology (Conditional) */}
+            {/* Row 2: Chronology */}
             {useTimeSystem ? (
               <div style={styles.row}>
                 {showYear && (
@@ -460,7 +462,6 @@ export default function SceneCreator({ profile }) {
                     />
                   </div>
                 )}
-                
                 {showDate && (
                   <div style={{ flex: 1 }}>
                     <label style={styles.label}>Date</label>
@@ -473,7 +474,6 @@ export default function SceneCreator({ profile }) {
                     />
                   </div>
                 )}
-                
                 {showClock && (
                   <div style={{ flex: 1 }}>
                     <label style={styles.label}>Time</label>
@@ -542,7 +542,7 @@ export default function SceneCreator({ profile }) {
         {activeTab !== "write" && (
           <div style={styles.formContainer}>
 
-            {/* File Selector - Only visible for Read/Edit modes */}
+            {/* File Selector */}
             {(activeTab === "read" || activeTab === "edit") && (
               <div style={styles.row}>
                 <select 
@@ -559,10 +559,116 @@ export default function SceneCreator({ profile }) {
               </div>
             )}
 
+            {/* READ TAB */}
             {activeTab === "read" && fileContent && (
-              <div style={styles.readerView}>{fileContent}</div>
+              <>
+                <div style={styles.readerView}>{fileContent}</div>
+
+                {/* --- GENERATION LOG PANEL --- */}
+                {selectedFile && (
+                  <div style={styles.logBox}>
+                    <div onClick={() => setShowLog(!showLog)} style={styles.logHeader}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <BookOpen size={15} color="#60a5fa" />
+                        <span style={{ fontWeight: '600', fontSize: '13px' }}>Generation Log</span>
+                        {generationLog && !showLog && (
+                          <span style={{ fontSize: '11px', color: '#52525b' }}>
+                            {generationLog.timestamp}
+                          </span>
+                        )}
+                      </div>
+                      <ChevronDown 
+                        size={15} 
+                        color="#555" 
+                        style={{ transform: showLog ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} 
+                      />
+                    </div>
+
+                    {showLog && (
+                      <div style={styles.logBody}>
+                        {isLoadingLog ? (
+                          <div style={{ color: '#52525b', fontSize: '13px' }}>Loading...</div>
+                        ) : !generationLog ? (
+                          <div style={{ color: '#52525b', fontSize: '13px', fontStyle: 'italic' }}>
+                            No log found for this file. Logs are recorded for scenes generated after this feature was added.
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+                            {/* Status Row */}
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              <div style={{
+                                ...styles.logBadge,
+                                background: generationLog.validator_result === 'PASS' ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                                border: `1px solid ${generationLog.validator_result === 'PASS' ? '#22c55e' : '#f59e0b'}`,
+                                color: generationLog.validator_result === 'PASS' ? '#22c55e' : '#f59e0b'
+                              }}>
+                                {generationLog.validator_result === 'PASS' 
+                                  ? <Check size={11} /> 
+                                  : <X size={11} />
+                                }
+                                {generationLog.validator_result === 'PASS' ? 'Validator Passed' : 'Force-Passed (Revision Cap Hit)'}
+                              </div>
+
+                              <div style={{ ...styles.logBadge, background: 'rgba(59,130,246,0.1)', border: '1px solid #1d4ed8', color: '#60a5fa' }}>
+                                {generationLog.revision_count} Draft{generationLog.revision_count !== 1 ? 's' : ''}
+                              </div>
+
+                              {generationLog.timeline && (
+                                <div style={{ ...styles.logBadge, background: 'rgba(168,85,247,0.1)', border: '1px solid #7e22ce', color: '#a855f7' }}>
+                                  {generationLog.timeline}
+                                </div>
+                              )}
+
+                              <div style={{ marginLeft: 'auto', fontSize: '11px', color: '#52525b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <Clock size={11} /> {generationLog.timestamp}
+                              </div>
+                            </div>
+
+                            {/* Brief */}
+                            <div>
+                              <div style={styles.logLabel}>BRIEF USED</div>
+                              <div style={styles.logValue}>{generationLog.brief}</div>
+                            </div>
+
+                            {/* Retrieved Documents */}
+                            <div>
+                              <div style={styles.logLabel}>
+                                DOCUMENTS RETRIEVED BY LIBRARIAN ({generationLog.retrieved_titles.length})
+                              </div>
+                              {generationLog.retrieved_titles.length === 0 ? (
+                                <div style={{ ...styles.logValue, color: '#52525b', fontStyle: 'italic' }}>
+                                  None retrieved.
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                                  {generationLog.retrieved_titles.map((t, i) => (
+                                    <span key={i} style={styles.logTag}>{t}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Active Spoilers */}
+                            {generationLog.active_spoilers && (
+                              <div>
+                                <div style={styles.logLabel}>ACTIVE SPOILER BLOCKS</div>
+                                <div style={{ ...styles.logValue, color: '#f87171', fontFamily: 'monospace', fontSize: '12px' }}>
+                                  {generationLog.active_spoilers}
+                                </div>
+                              </div>
+                            )}
+
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
+            {/* EDIT TAB */}
             {activeTab === "edit" && fileContent && (
               <>
                 <textarea 
@@ -576,18 +682,16 @@ export default function SceneCreator({ profile }) {
               </>
             )}
 
-            {/* --- MANAGE TAB --- */}
+            {/* MANAGE TAB */}
             {activeTab === "manage" && (
               <div style={styles.formContainer}>
                 
-                {/* Header Info */}
                 <div style={{ marginBottom: '5px' }}>
                   <span style={{ fontSize: '13px', color: '#a1a1aa' }}>
                     {selectedManageFiles.length} files selected
                   </span>
                 </div>
 
-                {/* File List */}
                 <div style={{ border: '1px solid #27272a', borderRadius: '6px', maxHeight: '500px', overflowY: 'auto' }}>
                   {files.map(f => (
                     <div 
@@ -613,9 +717,7 @@ export default function SceneCreator({ profile }) {
                   {files.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: '#555' }}>No files found.</div>}
                 </div>
 
-                {/* Management Toolbar */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                  
                   <button 
                     onClick={handleMergeSelected} 
                     disabled={selectedManageFiles.length < 2}
@@ -639,7 +741,6 @@ export default function SceneCreator({ profile }) {
                   >
                     <Trash2 size={16} /> Delete
                   </button>
-
                 </div>
               </div>
             )}
@@ -658,13 +759,10 @@ const styles = {
   container: { 
     maxWidth: '1100px', width: '100%', margin: '0 auto', padding: '40px', boxSizing: 'border-box', color: '#e4e4e7' 
   },
-  
-  // Header
   header: { marginBottom: '30px' },
   title: { margin: 0, display: 'flex', alignItems: 'center', gap: '12px', fontSize: '24px', color: '#e4e4e7' },
   subtitle: { margin: '5px 0 0 0', color: '#64748b', fontSize: '14px', marginLeft: '40px' },
 
-  // Tabs
   tabContainer: { 
     display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '1px solid #27272a', paddingBottom: '10px' 
   },
@@ -677,7 +775,6 @@ const styles = {
     background: '#ef4444', color: '#ffffff', fontWeight: '600' 
   },
   
-  // Forms & Inputs
   formContainer: { display: 'flex', flexDirection: 'column', gap: '20px' },
   row: { display: 'flex', gap: '20px' },
   label: { 
@@ -694,7 +791,6 @@ const styles = {
     resize: 'vertical', boxSizing: 'border-box', lineHeight: '1.6' 
   },
   
-  // MultiSelect Styles
   dropdownMenu: { 
     position: 'absolute', top: '100%', left: 0, width: '100%', background: '#18181b', 
     border: '1px solid #3f3f46', borderRadius: '6px', maxHeight: '250px', overflowY: 'auto', 
@@ -710,7 +806,6 @@ const styles = {
     fontSize: '12px', display: 'flex', alignItems: 'center', border: '1px solid #52525b'
   },
 
-  // Controls
   checkboxContainer: { display: 'flex', alignItems: 'center', gap: '10px' },
   checkboxLabel: { color: '#a1a1aa', cursor: 'pointer', fontSize: '14px' },
   primaryButton: { 
@@ -723,16 +818,39 @@ const styles = {
     borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' 
   },
   
-  // Modes
   readerView: { 
     background: '#18181b', padding: '40px', borderRadius: '8px', border: '1px solid #27272a', 
     whiteSpace: 'pre-wrap', lineHeight: '1.8', fontSize: '16px', fontFamily: 'verdana', color: '#f4f4f5' 
   },
-  dangerZone: { 
-    padding: '20px', border: '1px solid #7f1d1d', background: '#450a0a', borderRadius: '8px', color: '#fecaca' 
-  },
   disabledBox: { 
     display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: '#27272a', 
     border: '1px dashed #3f3f46', borderRadius: '6px', color: '#71717a', fontSize: '13px', fontStyle: 'italic' 
+  },
+
+  // Generation Log
+  logBox: {
+    border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden', background: '#111'
+  },
+  logHeader: {
+    padding: '12px 16px', background: '#18181b', cursor: 'pointer',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+  },
+  logBody: {
+    padding: '20px', borderTop: '1px solid #27272a'
+  },
+  logBadge: {
+    display: 'inline-flex', alignItems: 'center', gap: '5px',
+    padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700'
+  },
+  logLabel: {
+    fontSize: '10px', color: '#52525b', fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px'
+  },
+  logValue: {
+    fontSize: '13px', color: '#a1a1aa', lineHeight: '1.5'
+  },
+  logTag: {
+    fontSize: '12px', background: '#1e293b', border: '1px solid #334155',
+    color: '#94a3b8', padding: '3px 8px', borderRadius: '4px'
   }
 };

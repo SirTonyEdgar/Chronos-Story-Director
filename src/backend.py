@@ -73,6 +73,7 @@ class StoryState(TypedDict):
     use_fog_of_war: bool
     context_files: List[str]
     critique_notes: str
+    retrieved_ids: List[int]
 
 # ==========================================
 # 1. API PROXY LAYER (Bridge to DB Manager)
@@ -100,6 +101,10 @@ def save_faction_reaction(p, f, t, s): return db.save_faction_reaction(p, f, t, 
 def add_project(p, n, d, f): return db.add_project(p, n, d, f)
 def update_project(p, i, pr, no, nn=None, nd=None): return db.update_project(p, i, pr, no, nn, nd)
 def complete_project(p, i, l, t="Fact"): return db.complete_project(p, i, l, t)
+def get_fragment_titles_by_ids(profile, ids): return db.get_fragment_titles_by_ids(profile, ids)
+def get_generation_log(profile, filename): return db.get_generation_log(profile, filename)
+def list_backups(profile): return db.list_backups(profile)
+def restore_backup(profile, filename): return db.restore_backup(profile, filename)
 
 def get_next_chapter_number(profile_name):
     """Calculates the next available chapter number based on existing files."""
@@ -295,7 +300,7 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
     Topics: [topic1, topic2, topic3]
     
     TEXT:
-    {content[:8000]}
+    {content[:32000]}
     """
 
     llm = get_llm(profile_name, "chat")
@@ -621,7 +626,8 @@ def plan_scene(state: StoryState) -> dict:
     
     return {
         "scene_outline": response,
-        "banned_words": ", ".join(all_banned)
+        "banned_words": ", ".join(all_banned),
+        "retrieved_ids": relevant_ids
     }
 
 def draft_scene(state: StoryState) -> dict:
@@ -795,7 +801,8 @@ def draft_scene(state: StoryState) -> dict:
     return {
         "current_draft": response, 
         "revision_count": state['revision_count'] + 1, 
-        "banned_words": ", ".join(all_banned)
+        "banned_words": ", ".join(all_banned),
+        "retrieved_ids": list(set(state.get('retrieved_ids', []) + relevant_ids))
     }
 
 def critique_scene(state: StoryState) -> dict:
@@ -960,6 +967,8 @@ def generate_scene(
         "current_draft": "",
         "banned_words": "",
         "use_fog_of_war": use_fog_of_war,
+        "context_files": context_files,
+        "retrieved_ids": [],
     }
     
     # 5. Execute AI Loop
@@ -1003,6 +1012,22 @@ def generate_scene(
     print(f"  [Engine] Generating metadata for {filename}...")
     metadata = generate_file_metadata(profile, final_state['current_draft'])
     db.upsert_scene(profile, filename, final_state['current_draft'], metadata)
+
+    # [GENERATION LOG]
+    retrieved_ids = final_state.get('retrieved_ids', [])
+    retrieved_titles = db.get_fragment_titles_by_ids(profile, retrieved_ids)
+    validator_result = "PASS" if final_state.get('is_grounded') else "FORCE_PASS"
+    db.save_generation_log(
+        profile_name=profile,
+        filename=filename,
+        brief=brief[:500],
+        retrieved_ids=json.dumps(retrieved_ids),
+        retrieved_titles=json.dumps(retrieved_titles),
+        revision_count=final_state.get('revision_count', 1),
+        validator_result=validator_result,
+        active_spoilers=final_state.get('banned_words', ''),
+        timeline=timeline
+    )
 
     return final_state['current_draft'], filepath
 

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
   Save, User, Briefcase, Users, Coins, Zap, Globe, FileJson, 
-  Sparkles, ChevronDown, ChevronRight, FileText, Check 
+  Sparkles, ChevronDown, ChevronRight, FileText, Check,
+  RotateCcw, Clock
 } from 'lucide-react';
 import { API_URL } from '../config';
 import { TimelineDropdown } from '../components/SharedComponents';
@@ -40,9 +41,12 @@ export default function WorldStateTracker({ profile }) {
   const [files, setFiles] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  
-  // Timeline state for the AI Analyzer
   const [analyzeTimeline, setAnalyzeTimeline] = useState("");
+
+  // --- ROLLBACK STATE ---
+  const [showRollback, setShowRollback] = useState(false);
+  const [backups, setBackups] = useState([]);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // --- INITIALIZATION ---
   useEffect(() => { 
@@ -125,6 +129,43 @@ export default function WorldStateTracker({ profile }) {
     }
   };
 
+  // --- ROLLBACK HANDLERS ---
+
+  const toggleRollback = () => {
+    if (!showRollback) fetchBackups();
+    setShowRollback(!showRollback);
+  };
+
+  const fetchBackups = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/state/backups/${profile}`);
+      setBackups(res.data || []);
+    } catch (err) {
+      console.error("Error fetching backups:", err);
+      toast("Could not load backups.", "error");
+    }
+  };
+
+  const handleRestore = async (filename, display) => {
+    const ok = await confirm(
+      `Restore the world state from:\n\n${display}\n\nYour current state will be backed up automatically before restoring.`,
+      { title: "Restore Backup", confirmLabel: "Restore", danger: true }
+    );
+    if (!ok) return;
+
+    setIsRestoring(true);
+    try {
+      await axios.post(`${API_URL}/state/restore/${profile}?filename=${encodeURIComponent(filename)}`);
+      await fetchState();
+      toast("World state restored successfully.", "success");
+      setShowRollback(false);
+    } catch (err) {
+      toast("Restore failed: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
   if (!state) return <div style={styles.loadingState}>Loading World State...</div>;
 
   const availableTimelines = state.Timelines || [];
@@ -169,7 +210,6 @@ export default function WorldStateTracker({ profile }) {
                 Select context files (Scenes, Lore, Plans) to auto-extract data and update the tracker.
               </p>
               
-              {/* NEW: Sleek Timeline Selector for Analysis */}
               {availableTimelines.length > 0 && (
                 <div style={{ marginBottom: '15px' }}>
                   <label style={{ fontSize: '12px', color: '#a855f7', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
@@ -206,6 +246,63 @@ export default function WorldStateTracker({ profile }) {
               >
                 {isAnalyzing ? "Processing Context..." : "Analyze & Update State"}
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* Restore from Backup (Collapsible) */}
+        <div style={styles.rollbackBox}>
+          <div onClick={toggleRollback} style={styles.rollbackHeader}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'bold' }}>
+              <RotateCcw size={18} color="#f59e0b" />
+              <span>Restore from Backup</span>
+            </div>
+            {showRollback ? <ChevronDown size={18} color="#666" /> : <ChevronRight size={18} color="#666" />}
+          </div>
+
+          {showRollback && (
+            <div style={styles.rollbackBody}>
+              <p style={styles.rollbackHint}>
+                Up to 5 automatic backups are kept. Restoring will back up your current state first, so you can always undo a restore.
+              </p>
+
+              {backups.length === 0 ? (
+                <div style={{ color: '#555', fontSize: '13px', fontStyle: 'italic', padding: '10px 0' }}>
+                  No backups available yet. Backups are created automatically each time you save the world state.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {backups.map((b, i) => (
+                    <div key={b.filename} style={styles.backupItem}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <Clock size={16} color="#f59e0b" style={{ flexShrink: 0 }} />
+                        <div>
+                          <div style={{ fontSize: '13px', color: '#e4e4e7', fontWeight: '600' }}>
+                            {b.display}
+                          </div>
+                          {i === 0 && (
+                            <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px', fontWeight: '700' }}>
+                              Most Recent
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRestore(b.filename, b.display)}
+                        disabled={isRestoring}
+                        style={{
+                          ...styles.restoreBtn,
+                          opacity: isRestoring ? 0.5 : 1,
+                          cursor: isRestoring ? 'default' : 'pointer'
+                        }}
+                      >
+                        <RotateCcw size={13} />
+                        {isRestoring ? "Restoring..." : "Restore"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -248,7 +345,7 @@ export default function WorldStateTracker({ profile }) {
 
       </div>
 
-      {/* Floating Action Button (FAB) for Persistence */}
+      {/* Floating Save Button */}
       <button 
         onClick={saveState}
         disabled={isSaving || !hasUnsavedChanges}
@@ -283,13 +380,25 @@ const styles = {
   header: { marginBottom: '20px' },
   title: { margin: 0, display: 'flex', alignItems: 'center', gap: '12px', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.5px' },
   fab: { position: 'fixed', bottom: '30px', right: '40px', height: '48px', borderRadius: '24px', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' },
-  analysisBox: { marginBottom: '30px', border: '1px solid #333', borderRadius: '8px', background: '#111', overflow: 'hidden' },
+  
+  // Analysis panel (unchanged)
+  analysisBox: { marginBottom: '15px', border: '1px solid #333', borderRadius: '8px', background: '#111', overflow: 'hidden' },
   analysisHeader: { padding: '15px 20px', background: '#1a1a1a', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   analysisBody: { padding: '20px', borderTop: '1px solid #333' },
   analysisHint: { margin: '0 0 15px 0', fontSize: '13px', color: '#aaa' },
   fileGrid: { maxHeight: '200px', overflowY: 'auto', border: '1px solid #333', borderRadius: '6px', padding: '10px', background: '#0e0e0e', marginBottom: '15px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '8px' },
   fileItem: { padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s' },
   analyzeBtn: { width: '100%', padding: '12px', background: '#a855f7', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', transition: 'background 0.2s' },
+
+  // Rollback panel
+  rollbackBox: { marginBottom: '30px', border: '1px solid #2a2208', borderRadius: '8px', background: '#111', overflow: 'hidden' },
+  rollbackHeader: { padding: '15px 20px', background: '#1a1608', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  rollbackBody: { padding: '20px', borderTop: '1px solid #2a2208' },
+  rollbackHint: { margin: '0 0 15px 0', fontSize: '13px', color: '#aaa' },
+  backupItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '6px' },
+  restoreBtn: { background: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', color: '#f59e0b', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s', flexShrink: 0 },
+
+  // Tabs and content (unchanged)
   tabContainer: { display: 'flex', gap: '5px', marginBottom: '0', borderBottom: '1px solid #333' },
   tabButton: { padding: '12px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', borderTop: 'none', borderLeft: 'none', borderRight: 'none', transition: 'all 0.2s', outline: 'none' },
   contentArea: { background: '#151515', padding: '25px', borderRadius: '0 0 8px 8px', minHeight: '500px', border: '1px solid #222', borderTop: 'none' }
