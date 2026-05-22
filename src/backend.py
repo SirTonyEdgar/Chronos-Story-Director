@@ -73,6 +73,8 @@ class StoryState(TypedDict):
     use_fog_of_war: bool
     context_files: List[str]
     critique_notes: str
+    style_notes: str
+    style_result: str
     retrieved_ids: List[int]
 
 # ==========================================
@@ -875,6 +877,56 @@ def critique_scene(state: StoryState) -> dict:
         "critique_notes": f"EDITOR FEEDBACK TO FIX: {notes}"
     }
 
+def enforce_style(state: StoryState) -> dict:
+    """
+    Workflow Node 4: Style Enforcement (The Copy Editor).
+    Checks the validated draft against the user's Rulebook for style,
+    register, vocabulary, and prose rhythm violations.
+    """
+    profile = state['profile_name']
+    settings = db.get_story_settings(profile)
+
+    # Fetch only Rulebook fragments — style rules live there
+    current_timeline = state.get('timeline', '').strip()
+    rules, _, _ = get_global_context(profile, current_timeline)
+
+    prompt = f"""
+    ROLE: Copy Editor & Style Enforcer.
+
+    You are reviewing a scene draft for style compliance only. Continuity and plot have already been verified. Your sole job is to check that the prose matches the established style, register, and vocabulary of this project.
+
+    *** WORLD RULES & STYLE GUIDE ***
+    {rules}
+
+    *** DRAFT TO REVIEW ***
+    {state['current_draft']}
+
+    *** INSTRUCTIONS ***
+    1. Read the Style Guide section of the World Rules above. If no explicit style rules are defined, reply EXACTLY with: PASS
+    2. REGISTER CHECK: Does the prose feel consistent with the established tone (e.g. literary, pulpy, clinical, lyrical)? Flag drift.
+    3. VOCABULARY CHECK: Are there anachronistic words, modern slang in a period setting, or genre-inappropriate terms?
+    4. RHYTHM CHECK: Does the prose style match the established voice, or does it feel generated/generic?
+
+    5. If the draft passes all style checks, reply EXACTLY with: PASS
+    6. If there are style violations, reply with: STYLE_FAIL, followed by a 1-2 sentence description of the SPECIFIC violations to fix. Be precise — name the offending words or phrases.
+    """
+
+    llm = get_llm(profile, "style", settings=settings)
+    res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+
+    if res.startswith("PASS"):
+        print(f"  [Style Enforcer] PASS.")
+        return {"style_result": "PASS", "style_notes": ""}
+
+    notes = res.replace("STYLE_FAIL", "").strip().strip(",").strip(":")
+    print(f"  [Style Enforcer] Violation found. Sending back to Drafter. Reason: {notes}")
+
+    return {
+        "style_result": "STYLE_FAIL",
+        "style_notes": f"STYLE EDITOR FEEDBACK TO FIX: {notes}",
+        "critique_notes": f"STYLE EDITOR FEEDBACK TO FIX: {notes}"
+    }
+
 def generate_scene(
     profile: str, 
     chapter_num: Optional[int], 
@@ -897,20 +949,30 @@ def generate_scene(
     workflow.add_node("planner", plan_scene)
     workflow.add_node("drafter", draft_scene)
     workflow.add_node("validator", critique_scene)
-    
+    workflow.add_node("style_enforcer", enforce_style)
+
     workflow.set_entry_point("planner")
     workflow.add_edge("planner", "drafter")
     workflow.add_edge("drafter", "validator")
-    
+
     def route_after_validation(state):
         if state['is_grounded']:
-            return END
+            return "style_enforcer"
         if state['revision_count'] > 2:
-            print(f"  [WARNING] Revision cap hit on scene '{state.get('scene_title', 'Unknown')}' — force-passing unverified draft.")
+            print(f"  [WARNING] Revision cap hit on '{state.get('scene_title', 'Unknown')}' — force-passing.")
+            return "style_enforcer"
+        return "drafter"
+
+    def route_after_style(state):
+        if state.get('style_result') == "PASS":
+            return END
+        if state['revision_count'] > 3:
+            print(f"  [WARNING] Style cap hit on '{state.get('scene_title', 'Unknown')}' — force-passing.")
             return END
         return "drafter"
 
     workflow.add_conditional_edges("validator", route_after_validation)
+    workflow.add_conditional_edges("style_enforcer", route_after_style)
     app = workflow.compile()
     
     # 2. Context Assembly
@@ -972,6 +1034,8 @@ def generate_scene(
         "use_fog_of_war": use_fog_of_war,
         "context_files": context_files,
         "retrieved_ids": [],
+        "style_notes": "",
+        "style_result": "",
     }
     
     # 5. Execute AI Loop
@@ -1020,6 +1084,7 @@ def generate_scene(
     retrieved_ids = final_state.get('retrieved_ids', [])
     retrieved_titles = db.get_fragment_titles_by_ids(profile, retrieved_ids)
     validator_result = "PASS" if final_state.get('is_grounded') else "FORCE_PASS"
+    style_result = final_state.get('style_result', 'N/A')
     db.save_generation_log(
         profile_name=profile,
         filename=filename,
@@ -1027,7 +1092,7 @@ def generate_scene(
         retrieved_ids=json.dumps(retrieved_ids),
         retrieved_titles=json.dumps(retrieved_titles),
         revision_count=final_state.get('revision_count', 1),
-        validator_result=validator_result,
+        validator_result=f"{validator_result} | Style: {style_result}",
         active_spoilers=final_state.get('banned_words', ''),
         timeline=timeline
     )
