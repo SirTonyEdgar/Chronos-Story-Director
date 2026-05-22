@@ -187,18 +187,35 @@ def get_story_settings(profile_name: str) -> dict:
         "default_timezone": "UTC",
         "use_time_system": "true",
         "enable_chapters": "true",
-        "model_scene": "gemini-2.5-pro",
-        "model_chat": "gemini-2.5-flash",
+        "model_scene":     "gemini-2.5-pro",
+        "model_planner":   "gemini-2.5-flash",
+        "model_validator": "gemini-2.5-flash",
+        "model_style":     "gemini-2.5-flash",
+        "model_coauthor":  "gemini-2.5-flash",
+        "model_reaction":  "gemini-2.5-flash",
+        "model_warroom":   "gemini-2.5-flash",
+        "model_librarian": "gemini-2.5-flash",
     }
     paths = get_paths(profile_name)
     try:
         conn = sqlite3.connect(paths['db'])
         c = conn.cursor()
         c.execute("SELECT key, value FROM story_settings")
-        for k, v in c.fetchall():
-            defaults[k] = v
+        db_settings = dict(c.fetchall())
         conn.close()
-    except sqlite3.Error: pass 
+
+        # Apply all DB settings
+        defaults.update(db_settings)
+
+        # Migrate old key names for existing profiles that have the old keys saved
+        if "model_coauthor" not in db_settings and "model_chat" in db_settings:
+            defaults["model_coauthor"] = db_settings["model_chat"]
+        if "model_warroom" not in db_settings and "model_analysis" in db_settings:
+            defaults["model_warroom"] = db_settings["model_analysis"]
+        if "model_librarian" not in db_settings and "model_retrieval" in db_settings:
+            defaults["model_librarian"] = db_settings["model_retrieval"]
+
+    except sqlite3.Error: pass
     return defaults
 
 # ==========================================

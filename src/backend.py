@@ -210,13 +210,16 @@ def get_llm(profile_name: str, task_type: str = "scene", settings: Optional[dict
         settings = db.get_story_settings(profile_name)
     
     model_map = {
-        "scene": "model_scene",
-        "chat": "model_chat",
-        "reaction": "model_reaction",
-        "analysis": "model_analysis",
-        "retrieval": "model_retrieval"
+        "scene":     "model_scene",
+        "planner":   "model_planner",
+        "validator": "model_validator",
+        "style":     "model_style",
+        "coauthor":  "model_coauthor",
+        "reaction":  "model_reaction",
+        "warroom":   "model_warroom",
+        "librarian": "model_librarian",
     }
-    target_key = model_map.get(task_type, "model_chat")
+    target_key = model_map.get(task_type, "model_coauthor")
     model_name = settings.get(target_key, "")
     
     # --- CHECK CACHE ---
@@ -303,7 +306,7 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
     {content[:32000]}
     """
 
-    llm = get_llm(profile_name, "chat")
+    llm = get_llm(profile_name, "librarian")
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
         return res
@@ -370,7 +373,7 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     If nothing is relevant, output: []
     """
     
-    llm = get_llm(profile_name, "retrieval") 
+    llm = get_llm(profile_name, "librarian")
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content
         ids = _extract_json(res) 
@@ -405,7 +408,7 @@ def resolve_faction_alias(profile_name, user_input):
     OUTPUT: The exact string from the Known Factions list, or "NEW".
     """
     
-    llm = get_llm(profile_name, "retrieval")
+    llm = get_llm(profile_name, "librarian")
     res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
 
     res = res.replace('"', '').replace("'", "")
@@ -457,7 +460,7 @@ def extract_dynamic_spoilers(plan: str, year: int, profile_name: str, settings: 
         return []
         
     prompt = f"List FUTURE events after {year} from: {plan}. OUTPUT: Comma-separated."
-    llm = get_llm(profile_name, "chat", settings=settings)
+    llm = get_llm(profile_name, "planner", settings=settings)
     
     try:
         response = llm.invoke([HumanMessage(content=prompt)]).content
@@ -509,7 +512,7 @@ def infer_header_data(brief: str, prev_context: str, settings: dict, profile_nam
     DEFAULT TIMEZONE: {settings.get('default_timezone', '')}
     OUTPUT JSON ONLY: {{ "year": 1984, "date": "March 6", "time": "14:00 CST" }}
     """
-    llm = get_llm(profile_name, "chat", settings=settings)
+    llm = get_llm(profile_name, "planner", settings=settings)
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content
         return _extract_json(res)
@@ -529,7 +532,7 @@ def auto_generate_title(profile_name: str, draft_text: str, brief: str) -> str:
     Examples: "The Red Wedding", "Midnight at the Docks", "Protocol Omega".
     OUTPUT: The title text ONLY. No quotes.
     """
-    llm = get_llm(profile_name, "chat")
+    llm = get_llm(profile_name, "scene")
     try:
         return llm.invoke([HumanMessage(content=prompt)]).content.strip()
     except Exception:
@@ -621,7 +624,7 @@ def plan_scene(state: StoryState) -> dict:
     OUTPUT: ONLY the bulleted outline. Do not write the prose.
     """
     
-    llm = get_llm(profile, "analysis", settings=settings)
+    llm = get_llm(profile, "planner", settings=settings)
     response = llm.invoke([HumanMessage(content=prompt)]).content
     
     return {
@@ -854,7 +857,7 @@ def critique_scene(state: StoryState) -> dict:
     """
     
     # Use the 'analysis' model (usually a smarter model like GPT-4o or Claude 3.5 Sonnet)
-    llm = get_llm(profile, "analysis") 
+    llm = get_llm(profile, "validator")
     res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
     
     # 6. Evaluate the AI's critique
@@ -1216,7 +1219,7 @@ def run_chat_query(profile_name, user_input, timeline=""):
        - However, if the user asks for a DEFINITION (e.g. "What is an iPhone?"), answer accurately but note it doesn't exist yet in the story.
     """
     
-    llm = get_llm(profile_name, "chat")
+    llm = get_llm(profile_name, "coauthor")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
 # ==========================================
@@ -1314,7 +1317,7 @@ def run_war_room_simulation(profile, action_input, timeline=""):
     """
     
     # 7. Execution
-    llm = get_llm(profile, "analysis")
+    llm = get_llm(profile, "warroom")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
 # ==========================================
@@ -1495,7 +1498,7 @@ def analyze_state_changes(profile_name, scene_content, timeline=""):
     DO NOT return a partial update. The output must be the full, valid JSON structure.
     """
     
-    llm = get_llm(profile_name, "analysis") 
+    llm = get_llm(profile_name, "warroom")
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content
         new_state = _extract_json(res)

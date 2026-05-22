@@ -9,10 +9,6 @@ import { toast, confirm } from './components/Notifications';
 
 // --- CUSTOM COMPONENTS ---
 
-/**
- * ModelSelect
- * Dropdown for selecting AI models. Defined here to avoid ReferenceErrors.
- */
 const ModelSelect = ({ label, value, options, onChange, desc }) => (
   <div>
     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -29,40 +25,26 @@ const ModelSelect = ({ label, value, options, onChange, desc }) => (
   </div>
 );
 
-/**
- * StyledCheckbox
- * Custom UI replacement for the native checkbox.
- */
-const StyledCheckbox = ({ checked, onChange, style }) => (
+const StyledCheckbox = ({ checked, onChange }) => (
   <div 
     onClick={() => onChange(!checked)}
     style={{
-      width: '18px',
-      height: '18px',
-      borderRadius: '4px',
+      width: '18px', height: '18px', borderRadius: '4px',
       border: checked ? '1px solid #3b82f6' : '1px solid #52525b', 
       background: checked ? '#3b82f6' : '#27272a', 
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'pointer',
-      transition: 'all 0.2s',
-      flexShrink: 0,
-      ...style
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0,
     }}
   >
     {checked && <Check size={12} color="#fff" strokeWidth={4} />}
   </div>
 );
 
-const AutoResizeTextarea = ({ value, onChange, placeholder, style }) => {
+const AutoResizeTextarea = ({ value, onChange, placeholder }) => {
   const textareaRef = useRef(null);
   const adjustHeight = () => {
     const el = textareaRef.current;
-    if (el) {
-      el.style.height = 'auto'; 
-      el.style.height = `${el.scrollHeight}px`; 
-    }
+    if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }
   };
   useEffect(() => { adjustHeight(); }, [value]);
   return (
@@ -76,11 +58,21 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, style }) => {
         width: '100%', background: 'transparent', border: 'none', color: '#fff',
         outline: 'none', fontFamily: 'inherit', resize: 'none', overflow: 'hidden',
         minHeight: '38px', lineHeight: '1.5', display: 'block', padding: '8px',
-        fontSize: '13px', ...style
+        fontSize: '13px'
       }}
     />
   );
 };
+
+const SectionDivider = ({ label }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 0' }}>
+    <div style={{ height: '1px', background: '#27272a', flex: 1 }} />
+    <span style={{ fontSize: '10px', color: '#52525b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+      {label}
+    </span>
+    <div style={{ height: '1px', background: '#27272a', flex: 1 }} />
+  </div>
+);
 
 export default function Settings({ profile }) {
   const [config, setConfig] = useState({
@@ -94,7 +86,7 @@ export default function Settings({ profile }) {
   
   const [timelines, setTimelines] = useState([]);
   const [worldState, setWorldState] = useState(null);
-  const [availableModels, setAvailableModels] = useState([]); 
+  const [availableModels, setAvailableModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -111,7 +103,7 @@ export default function Settings({ profile }) {
       setConfig(prev => ({ ...prev, ...settingsRes.data }));
       setWorldState(stateRes.data);
       setTimelines(stateRes.data.Timelines || []);
-      setAvailableModels(modelsRes.data || ["gemini-1.5-flash"]); 
+      setAvailableModels(modelsRes.data || ["gemini-1.5-flash"]);
       setLoading(false);
       setHasUnsavedChanges(false);
     } catch (err) {
@@ -150,18 +142,24 @@ export default function Settings({ profile }) {
     setIsSaving(true);
     try {
       const updates = [
-        ['model_scene', config.model_scene],
-        ['model_chat', config.model_chat],
-        ['model_reaction', config.model_reaction],
-        ['model_analysis', config.model_analysis],
-        ['model_retrieval', config.model_retrieval],
-        ['default_timezone', config.default_timezone],
-        ['enable_chapters', config.enable_chapters],
-        ['use_time_system', config.use_time_system],
-        ['enable_year', config.enable_year],
-        ['enable_date', config.enable_date],
-        ['enable_clock', config.enable_clock],
-        ['use_timelines', config.use_timelines]
+        // Scene Generation Pipeline
+        ['model_scene',     config.model_scene],
+        ['model_planner',   config.model_planner],
+        ['model_validator', config.model_validator],
+        ['model_style',     config.model_style],
+        // Other Roles
+        ['model_coauthor',  config.model_coauthor],
+        ['model_reaction',  config.model_reaction],
+        ['model_warroom',   config.model_warroom],
+        ['model_librarian', config.model_librarian],
+        // World Mechanics
+        ['default_timezone',  config.default_timezone],
+        ['enable_chapters',   config.enable_chapters],
+        ['use_time_system',   config.use_time_system],
+        ['enable_year',       config.enable_year],
+        ['enable_date',       config.enable_date],
+        ['enable_clock',      config.enable_clock],
+        ['use_timelines',     config.use_timelines],
       ];
 
       for (let [key, val] of updates) {
@@ -186,35 +184,100 @@ export default function Settings({ profile }) {
     <div style={styles.container}>
       <div style={styles.header}>
         <h2 style={styles.title}><SettingsIcon size={28} color="#94a3b8" /> System Configuration</h2>
-        <p style={styles.subtitle}>Configure AI routing behaviors, narrative mechanics, and simulation rules.</p>
+        <p style={styles.subtitle}>Configure AI model routing, narrative mechanics, and simulation rules.</p>
       </div>
 
       <div style={styles.grid}>
-        
-        {/* --- CARD 1: AI MODELS --- */}
+
+        {/* --- CARD 1: AI MODEL ROUTING --- */}
         <div style={styles.card}>
-          <div style={styles.cardHeader}><Cpu size={18} color="#a855f7" /> <span>AI Model Routing</span></div>
+          <div style={styles.cardHeader}>
+            <Cpu size={18} color="#a855f7" /> <span>AI Model Routing</span>
+          </div>
           <div style={styles.cardContent}>
-            <ModelSelect label="Scene Writer" value={config.model_scene} options={availableModels} onChange={v => handleConfigChange('model_scene', v)} desc="Generates story prose." />
-            <ModelSelect label="Co-Author" value={config.model_chat} options={availableModels} onChange={v => handleConfigChange('model_chat', v)} desc="Handles chat & brainstorming." />
-            <ModelSelect label="Reaction Engine" value={config.model_reaction} options={availableModels} onChange={v => handleConfigChange('model_reaction', v)} desc="Simulates faction responses." />
-            <ModelSelect label="Logic & Strategy" value={config.model_analysis} options={availableModels} onChange={v => handleConfigChange('model_analysis', v)} desc="War Room & State Analysis." />
-            <ModelSelect label="Librarian / Retrieval" value={config.model_retrieval} options={availableModels} onChange={v => handleConfigChange('model_retrieval', v)} desc="Vector Search (Flash recommended)." />
+
+            <SectionDivider label="Scene Generation Pipeline" />
+
+            <ModelSelect 
+              label="Scene Writer" 
+              value={config.model_scene} 
+              options={availableModels} 
+              onChange={v => handleConfigChange('model_scene', v)} 
+              desc="Drafts the prose." 
+            />
+            <ModelSelect 
+              label="Planner" 
+              value={config.model_planner} 
+              options={availableModels} 
+              onChange={v => handleConfigChange('model_planner', v)} 
+              desc="Writes the beat sheet outline." 
+            />
+            <ModelSelect 
+              label="Validator" 
+              value={config.model_validator} 
+              options={availableModels} 
+              onChange={v => handleConfigChange('model_validator', v)} 
+              desc="Checks continuity and rule violations." 
+            />
+            <ModelSelect 
+              label="Style Enforcer" 
+              value={config.model_style} 
+              options={availableModels} 
+              onChange={v => handleConfigChange('model_style', v)} 
+              desc="Checks prose style and register." 
+            />
+
+            <SectionDivider label="Other Roles" />
+
+            <ModelSelect 
+              label="Co-Author" 
+              value={config.model_coauthor} 
+              options={availableModels} 
+              onChange={v => handleConfigChange('model_coauthor', v)} 
+              desc="Handles chat and brainstorming." 
+            />
+            <ModelSelect 
+              label="Reaction Engine" 
+              value={config.model_reaction} 
+              options={availableModels} 
+              onChange={v => handleConfigChange('model_reaction', v)} 
+              desc="Simulates faction responses." 
+            />
+            <ModelSelect 
+              label="War Room" 
+              value={config.model_warroom} 
+              options={availableModels} 
+              onChange={v => handleConfigChange('model_warroom', v)} 
+              desc="Strategic simulation and state analysis." 
+            />
+            <ModelSelect 
+              label="Librarian" 
+              value={config.model_librarian} 
+              options={availableModels} 
+              onChange={v => handleConfigChange('model_librarian', v)} 
+              desc="Knowledge retrieval and metadata." 
+            />
+
           </div>
         </div>
 
         {/* --- CARD 2: WORLD MECHANICS --- */}
         <div style={styles.card}>
-          <div style={styles.cardHeader}><Globe size={18} color="#3b82f6" /> <span>World Mechanics</span></div>
+          <div style={styles.cardHeader}>
+            <Globe size={18} color="#3b82f6" /> <span>World Mechanics</span>
+          </div>
           <div style={styles.cardContent}>
-            
-            {/* CONDITIONAL TIMEZONE: Only shows if Master Time AND Clock Time are enabled */}
+
             {config.use_time_system === 'true' && config.enable_clock === 'true' && (
               <div>
                 <label style={styles.label}>Default Timezone</label>
                 <div style={styles.timeInputWrapper}>
                   <Clock size={16} color="#666" />
-                  <input value={config.default_timezone || "UTC"} onChange={e => handleConfigChange('default_timezone', e.target.value)} style={styles.input} />
+                  <input 
+                    value={config.default_timezone || "UTC"} 
+                    onChange={e => handleConfigChange('default_timezone', e.target.value)} 
+                    style={styles.input} 
+                  />
                 </div>
               </div>
             )}
@@ -231,7 +294,6 @@ export default function Settings({ profile }) {
               </div>
             </div>
 
-            {/* GRANULAR TIME CONTROLS */}
             {config.use_time_system === 'true' && (
               <div style={styles.subSettingsContainer}>
                 <div style={styles.subToggle}>
@@ -285,14 +347,19 @@ export default function Settings({ profile }) {
                 <div style={styles.toggleDesc}>Allow parallel realities and diverging history tracks.</div>
               </div>
             </div>
+
           </div>
         </div>
+
       </div>
 
+      {/* --- CARD 3: MULTIVERSE (CONDITIONAL) --- */}
       {config.use_timelines === 'true' && (
         <div style={{ ...styles.card, marginTop: '30px', marginBottom: '80px' }}>
-          <div style={{...styles.cardHeader, borderBottom: '1px solid #333', paddingBottom: '15px', marginBottom: '15px'}}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Zap size={18} color="#eab308" /> <span>Multiverse Configuration</span></div>
+          <div style={{ ...styles.cardHeader, borderBottom: '1px solid #333', paddingBottom: '15px', marginBottom: '15px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Zap size={18} color="#eab308" /> <span>Multiverse Configuration</span>
+            </div>
             <button onClick={addTimeline} style={styles.addBtn}><Plus size={14} /> Add Timeline</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -301,14 +368,23 @@ export default function Settings({ profile }) {
                 <div style={styles.timelineHeader}>
                   <div style={{ flex: 1 }}>
                     <label style={styles.fieldLabel}>TIMELINE NAME</label>
-                    <input value={tl.Name} onChange={e => handleTimelineChange(i, "Name", e.target.value)} style={styles.inputBordered} placeholder="e.g. Timeline Alpha" />
+                    <input 
+                      value={tl.Name} 
+                      onChange={e => handleTimelineChange(i, "Name", e.target.value)} 
+                      style={styles.inputBordered} 
+                      placeholder="e.g. Timeline Alpha" 
+                    />
                   </div>
                   <button onClick={() => removeTimeline(i)} style={styles.delBtn}><Trash2 size={16} /></button>
                 </div>
                 <div style={{ width: '100%' }}>
                   <label style={styles.fieldLabel}>CONTEXT / DIVERGENCE RULES</label>
                   <div style={styles.textareaWrapper}>
-                    <AutoResizeTextarea value={tl.Description} onChange={e => handleTimelineChange(i, "Description", e.target.value)} placeholder="Describe how this timeline differs..." />
+                    <AutoResizeTextarea 
+                      value={tl.Description} 
+                      onChange={e => handleTimelineChange(i, "Description", e.target.value)} 
+                      placeholder="Describe how this timeline differs..." 
+                    />
                   </div>
                 </div>
               </div>
@@ -318,14 +394,32 @@ export default function Settings({ profile }) {
         </div>
       )}
 
-      <button onClick={handleSave} disabled={isSaving || !hasUnsavedChanges} style={{...styles.fab, background: hasUnsavedChanges ? '#22c55e' : '#27272a', color: hasUnsavedChanges ? '#000' : '#666', cursor: (isSaving || !hasUnsavedChanges) ? 'default' : 'pointer', width: hasUnsavedChanges ? '180px' : '150px', border: hasUnsavedChanges ? '1px solid #16a34a' : '1px solid #333' }}>
-        {isSaving ? "Saving..." : <>{hasUnsavedChanges ? <Save size={18} /> : <Check size={18} />}<span>{hasUnsavedChanges ? "Save Config" : "Config Saved"}</span></>}
+      {/* Floating Save Button */}
+      <button 
+        onClick={handleSave} 
+        disabled={isSaving || !hasUnsavedChanges} 
+        style={{
+          ...styles.fab, 
+          background: hasUnsavedChanges ? '#22c55e' : '#27272a', 
+          color: hasUnsavedChanges ? '#000' : '#666', 
+          cursor: (isSaving || !hasUnsavedChanges) ? 'default' : 'pointer', 
+          width: hasUnsavedChanges ? '180px' : '150px', 
+          border: hasUnsavedChanges ? '1px solid #16a34a' : '1px solid #333'
+        }}
+      >
+        {isSaving ? "Saving..." : (
+          <>
+            {hasUnsavedChanges ? <Save size={18} /> : <Check size={18} />}
+            <span>{hasUnsavedChanges ? "Save Config" : "Config Saved"}</span>
+          </>
+        )}
       </button>
+
     </div>
   );
 }
 
-// --- CSS STYLES ---
+// --- STYLES ---
 const styles = {
   container: { padding: '30px', height: '100%', boxSizing: 'border-box', overflowY: 'auto', width: '100%', position: 'relative' },
   loadingState: { padding: '30px', color: '#666' },
@@ -335,7 +429,7 @@ const styles = {
   grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' },
   card: { background: '#09090b', border: '1px solid #27272a', borderRadius: '8px', padding: '20px' },
   cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', fontSize: '16px', fontWeight: 'bold', color: '#e4e4e7', marginBottom: '20px' },
-  cardContent: { display: 'flex', flexDirection: 'column', gap: '20px' },
+  cardContent: { display: 'flex', flexDirection: 'column', gap: '16px' },
   label: { fontSize: '13px', fontWeight: '600', color: '#cbd5e1' },
   select: { width: '100%', padding: '10px', background: '#111', border: '1px solid #333', color: '#fff', borderRadius: '6px', fontSize: '13px', outline: 'none' },
   input: { background: 'transparent', border: 'none', color: '#fff', fontSize: '13px', outline: 'none', fontFamily: 'inherit', width: '100%' },
@@ -351,8 +445,8 @@ const styles = {
   fieldLabel: { fontSize: '11px', color: '#666', marginBottom: '6px', display: 'block', fontWeight: 'bold', letterSpacing: '0.5px' },
   inputBordered: { background: '#09090b', border: '1px solid #333', color: '#fff', fontSize: '13px', outline: 'none', width: '100%', padding: '10px', borderRadius: '4px', boxSizing: 'border-box' },
   textareaWrapper: { background: '#09090b', border: '1px solid #333', borderRadius: '4px', padding: '2px' },
-  addBtn: { background: '#222', border: '1px solid #444', color: '#eee', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' },
-  delBtn: { background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', cursor: 'pointer', padding: '8px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s', height: '36px', width: '36px' },
+  addBtn: { background: '#222', border: '1px solid #444', color: '#eee', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' },
+  delBtn: { background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', cursor: 'pointer', padding: '8px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '36px', width: '36px' },
   emptyState: { color: '#666', fontStyle: 'italic', padding: '10px', textAlign: 'center' },
   fab: { position: 'fixed', bottom: '30px', right: '40px', height: '48px', borderRadius: '24px', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }
 };
