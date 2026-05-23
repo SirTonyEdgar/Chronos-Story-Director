@@ -346,13 +346,18 @@ export default function SharedEditor({ profile, category, icon, color, descripti
         
         <div style={styles.toolbar}>
           
+          {/* New Entry Indicator */}
+          {!selectedId && (
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: color }} />
+          )}
+
           <div style={{ position: 'relative', flex: 2, marginRight: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <input 
               value={editTitle} 
               onChange={e => setEditTitle(e.target.value)}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
-              placeholder="Untitled Entry"
+              placeholder="New Entry — type a title here"
               style={{
                 ...styles.titleInput,
                 borderBottom: isFocused ? `2px solid ${color}` : '1px dashed #444',
@@ -469,7 +474,7 @@ const styles = {
   itemText: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 },
   emptyState: { padding: '30px', textAlign: 'center', color: '#444', fontSize: '12px', fontStyle: 'italic' },
   editorPanel: { flex: 1, display: 'flex', flexDirection: 'column', background: '#0e0e0e' },
-  toolbar: { height: '70px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 25px', background: '#111' },
+  toolbar: { position: 'relative', height: '70px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 25px', background: '#111' },
   titleInput: { background: 'transparent', border: 'none', fontSize: '18px', fontWeight: '700', outline: 'none', width: '100%', padding: '8px 0', transition: 'border-color 0.2s ease, color 0.2s ease' },
   actionBtn: { padding: '8px 16px', background: '#18181b', border: '1px solid #333', color: '#aaa', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', minWidth: '80px', justifyContent: 'center' },
   textArea: { flex: 1, width: '100%', background: 'transparent', color: '#e4e4e7', border: 'none', padding: '40px', resize: 'none', outline: 'none', fontSize: '15px', lineHeight: '1.8', fontFamily: 'monospace', boxSizing: 'border-box' }

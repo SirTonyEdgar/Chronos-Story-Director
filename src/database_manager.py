@@ -311,6 +311,20 @@ def update_fragment_metadata(profile_name: str, frag_id: int, new_metadata: str)
     conn.commit()
     conn.close()
 
+def get_all_fragments_for_remetadata(profile_name: str) -> List[tuple]:
+    """Returns all fragments with content for metadata regeneration."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id, source_filename, content, type FROM memory_fragments WHERE content IS NOT NULL AND content != ''")
+        return c.fetchall()
+    except Exception as e:
+        print(f"Re-metadata fetch error: {e}")
+        return []
+    finally:
+        conn.close()
+
 def delete_fragment(profile_name, frag_id):
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])

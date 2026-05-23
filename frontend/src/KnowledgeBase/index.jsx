@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Book, Shield, Map, FileText, EyeOff } from 'lucide-react';
+import axios from 'axios';
+import { Book, Shield, Map, FileText, EyeOff, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { API_URL } from '../config';
+import { toast, confirm } from '../components/Notifications';
 
 // Import Sub-Tabs
 import LoreTab from './LoreTab';
@@ -8,29 +11,39 @@ import PlansTab from './PlansTab';
 import FactsTab from './FactsTab';
 import SpoilersTab from './SpoilersTab';
 
-/**
- * Knowledge Base Container
- * ========================
- * The central repository for world-building data.
- * Manages navigation between different knowledge domains (Lore, Rules, etc.)
- * and persists the active view across session refreshes.
- *
- * @param {string} profile - The currently active project profile.
- */
 export default function KnowledgeBase({ profile }) {
   
-  // --- NAVIGATION STATE (PERSISTENT) ---
-  // Lazy initialization: Check localStorage for the last active tab
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem("chronos_kb_tab") || "Lore";
   });
 
-  // Persist tab selection whenever it changes
+  const [isRemetadata, setIsRemetadata] = useState(false);
+  const [remetadataResult, setRemetadataResult] = useState(null);
+
   useEffect(() => {
     localStorage.setItem("chronos_kb_tab", activeTab);
   }, [activeTab]);
 
-  // Tab Configuration
+  const handleBulkRemetadata = async () => {
+    const ok = await confirm(
+      "This will regenerate Librarian metadata for every document in your Knowledge Base using the current prompt and 32,000 character cap.\n\nAny manual metadata edits you have made will be overwritten.\n\nThis may take several minutes depending on how many documents you have.",
+      { title: "Regenerate All Metadata", confirmLabel: "Regenerate", danger: false }
+    );
+    if (!ok) return;
+
+    setIsRemetadata(true);
+    setRemetadataResult(null);
+    try {
+      const res = await axios.post(`${API_URL}/knowledge/remetadata/${profile}`);
+      setRemetadataResult(res.data);
+      toast(`Metadata regenerated. ${res.data.success} updated, ${res.data.skipped} skipped, ${res.data.failed} failed.`, "success");
+    } catch (err) {
+      toast("Bulk re-metadata failed: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsRemetadata(false);
+    }
+  };
+
   const tabs = [
     { id: "Lore", icon: <Book size={16} />, label: "Lore", color: "#3b82f6" },
     { id: "Rules", icon: <Shield size={16} />, label: "Rules", color: "#ef4444" },
@@ -45,6 +58,32 @@ export default function KnowledgeBase({ profile }) {
       {/* --- HEADER --- */}
       <div style={styles.header}>
         <h2 style={styles.title}>🗄️ Knowledge Base</h2>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+
+          {/* Result Badge */}
+          {remetadataResult && (
+            <div style={styles.resultBadge}>
+              <CheckCircle2 size={13} color="#22c55e" />
+              <span>{remetadataResult.success} updated · {remetadataResult.skipped} skipped · {remetadataResult.failed} failed</span>
+            </div>
+          )}
+
+          {/* Bulk Re-metadata Button */}
+          <button
+            onClick={handleBulkRemetadata}
+            disabled={isRemetadata}
+            style={{
+              ...styles.remetadataBtn,
+              opacity: isRemetadata ? 0.6 : 1,
+              cursor: isRemetadata ? 'default' : 'pointer'
+            }}
+            title="Regenerate Librarian metadata for all documents using the current prompt and 32,000 character cap"
+          >
+            <RefreshCw size={14} style={{ animation: isRemetadata ? 'spin 1s linear infinite' : 'none' }} />
+            {isRemetadata ? "Regenerating..." : "Re-generate All Metadata"}
+          </button>
+        </div>
       </div>
 
       {/* --- TAB NAVIGATION --- */}
@@ -75,13 +114,17 @@ export default function KnowledgeBase({ profile }) {
         {activeTab === "Spoilers" && <SpoilersTab profile={profile} />}
       </div>
 
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
     </div>
   );
 }
 
-/**
- * Component Styles
- */
 const styles = {
   container: {
     padding: '30px',
@@ -128,5 +171,19 @@ const styles = {
     flex: 1,
     minHeight: '0',
     position: 'relative'
+  },
+  remetadataBtn: {
+    display: 'flex', alignItems: 'center', gap: '8px',
+    padding: '8px 14px', background: 'transparent',
+    border: '1px solid #3f3f46', color: '#a1a1aa',
+    borderRadius: '6px', fontSize: '12px', fontWeight: '600',
+    transition: 'all 0.2s'
+  },
+  resultBadge: {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    fontSize: '12px', color: '#22c55e',
+    background: 'rgba(34,197,94,0.08)',
+    border: '1px solid rgba(34,197,94,0.2)',
+    padding: '5px 10px', borderRadius: '6px'
   }
 };

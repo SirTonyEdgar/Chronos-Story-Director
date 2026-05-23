@@ -364,6 +364,18 @@ def update_fragment_metadata(profile: str, fragment_id: int, payload: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/knowledge/remetadata/{profile}")
+def bulk_remetadata(profile: str):
+    """
+    Regenerates Librarian metadata for all fragments in the profile.
+    This is a slow operation — one LLM call per document.
+    """
+    try:
+        result = engine.bulk_regenerate_metadata(profile)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/knowledge/delete/{profile}")
 def delete_knowledge_entry(profile: str, req: DeleteRequest):
     """Removes an entry from the knowledge base."""

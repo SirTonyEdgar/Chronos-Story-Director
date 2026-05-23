@@ -91,6 +91,7 @@ def get_fragments(p, c): return db.get_fragments(p, c)
 def add_fragment(p, n, c, t, tl=""): return db.add_fragment(p, n, c, t, tl)
 def update_fragment(p, i, c, tl=""): return db.update_fragment(p, i, c, tl)
 def update_fragment_metadata(profile, frag_id, new_metadata): return db.update_fragment_metadata(profile, frag_id, new_metadata)
+def get_all_fragments_for_remetadata(profile): return db.get_all_fragments_for_remetadata(profile)
 def delete_fragment(p, i): return db.delete_fragment(p, i)
 def rename_fragment(p, i, n): return db.rename_fragment(p, i, n)
 def get_chat_history(p): return db.get_chat_history(p)
@@ -1188,6 +1189,46 @@ def dry_run_scene(
         "inferred_date": final_date,
         "inferred_time": final_time,
     }
+
+def bulk_regenerate_metadata(profile_name: str) -> dict:
+    """
+    Regenerates metadata for every fragment in the profile using the
+    current metadata prompt and character cap. Overwrites existing metadata.
+    Returns a summary of results.
+    """
+    fragments = db.get_all_fragments_for_remetadata(profile_name)
+    total = len(fragments)
+    success = 0
+    failed = 0
+    skipped = 0
+
+    print(f"  [Bulk Re-metadata] Starting regeneration for {total} fragments...")
+
+    paths = db.get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=60)
+    c = conn.cursor()
+
+    for frag_id, filename, content, frag_type in fragments:
+        if not content or len(content.strip()) < 50:
+            skipped += 1
+            continue
+        try:
+            new_metadata = generate_file_metadata(profile_name, content)
+            if new_metadata:
+                c.execute("UPDATE memory_fragments SET metadata = ? WHERE id = ?", (new_metadata, frag_id))
+                success += 1
+                print(f"  [✓] {filename}")
+            else:
+                skipped += 1
+        except Exception as e:
+            print(f"  [✗] {filename}: {e}")
+            failed += 1
+
+    conn.commit()
+    conn.close()
+
+    print(f"  [Bulk Re-metadata] Done. Success: {success}, Skipped: {skipped}, Failed: {failed}")
+    return {"total": total, "success": success, "skipped": skipped, "failed": failed}
 
 def save_edited_scene(profile: str, filename: str, content: str) -> tuple[bool, str]:
     """
