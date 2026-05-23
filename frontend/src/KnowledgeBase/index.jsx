@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Book, Shield, Map, FileText, EyeOff, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Book, Shield, Map, FileText, EyeOff, RefreshCw, CheckCircle2, Users } from 'lucide-react';
 import { API_URL } from '../config';
 import { toast, confirm } from '../components/Notifications';
 
 // Import Sub-Tabs
 import LoreTab from './LoreTab';
+import CharactersTab from './CharactersTab';
 import RulesTab from './RulesTab';
 import PlansTab from './PlansTab';
 import FactsTab from './FactsTab';
@@ -46,6 +47,7 @@ export default function KnowledgeBase({ profile }) {
 
   const tabs = [
     { id: "Lore", icon: <Book size={16} />, label: "Lore", color: "#3b82f6" },
+    { id: "Character", icon: <Users size={16} />, label: "Characters", color: "#f97316" },
     { id: "Rules", icon: <Shield size={16} />, label: "Rules", color: "#ef4444" },
     { id: "Plans", icon: <Map size={16} />, label: "Plans", color: "#f59e0b" },
     { id: "Facts", icon: <FileText size={16} />, label: "Facts", color: "#10b981" },
@@ -108,6 +110,7 @@ export default function KnowledgeBase({ profile }) {
       {/* --- CONTENT AREA --- */}
       <div style={styles.contentArea}> 
         {activeTab === "Lore" && <LoreTab profile={profile} />}
+        {activeTab === "Character" && <CharactersTab profile={profile} />}
         {activeTab === "Rules" && <RulesTab profile={profile} />}
         {activeTab === "Plans" && <PlansTab profile={profile} />}
         {activeTab === "Facts" && <FactsTab profile={profile} />}
