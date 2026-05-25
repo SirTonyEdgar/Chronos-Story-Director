@@ -1990,7 +1990,7 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     relevant_ids = get_relevant_fragment_ids(
         profile_name, 
         user_query=query, 
-        doc_types=["Lore", "Fact", "Rulebook", "Scene"],
+        doc_types=["Lore", "Fact", "Rulebook", "Scene", "Faction"],
         current_timeline=timeline
     )
     smart_facts = db.get_content_by_ids(profile_name, relevant_ids)
@@ -2017,6 +2017,15 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     if timeline:
         timeline_instruction = f"\n*** ACTIVE UNIVERSE: [{timeline}] ***\nReact strictly based on the history, tech, and facts of this specific timeline.\n"
 
+    # 7b. Faction Profile Retrieval
+    faction_profile = ""
+    faction_rows = db.get_fragments(profile_name, "Faction")
+    for row in faction_rows:
+        if true_faction.lower() in row[1].lower() or true_faction.lower() in row[2].lower():
+            faction_profile = row[2]
+            print(f"  [Faction Profile] Found profile for '{true_faction}'")
+            break
+
     # 8. Prompt Construction (ADAPTIVE FORMATS)
     prompt = f"""
     ROLE: Narrative Simulator (Grounded in History & State).
@@ -2030,8 +2039,11 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     *** RELEVANT INTELLIGENCE (SMART RETRIEVAL) ***
     {smart_facts}
     
-    *** VOICE & TONE REFERENCE ***
-    {past_reactions}
+    *** FACTION PROFILE (PRIMARY VOICE REFERENCE) ***
+    {faction_profile if faction_profile else "No dedicated profile found. Infer voice from past reactions and world state."}
+
+    *** PAST REACTIONS (VOICE EVOLUTION) ***
+    {past_reactions if past_reactions else "No prior reactions on record. This is the first reaction from this faction."}
 
     *** MISSION ***
     Write a reaction to the SCENE provided below.
@@ -2063,6 +2075,39 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     llm = get_llm(profile_name, "reaction")
     res = llm.invoke([HumanMessage(content=prompt)]).content
     
+    # 9a. Consistency Validation
+    if past_reactions and faction_profile:
+        consistency_prompt = f"""
+        ROLE: Continuity Editor.
+        TASK: Check if the new faction reaction is consistent with this faction's established voice and known information.
+
+        *** FACTION PROFILE (GROUND TRUTH) ***
+        {faction_profile}
+
+        *** PAST REACTIONS (VOICE HISTORY) ***
+        {past_reactions}
+
+        *** NEW REACTION TO CHECK ***
+        {res}
+
+        INSTRUCTION: Check for:
+        1. Voice inconsistency — does the tone, register, or personality match the profile?
+        2. Knowledge contradiction — does the faction reference information it shouldn't know yet?
+        3. Behavioral contradiction — does the faction act against its established character?
+
+        If consistent, output: CONSISTENT
+        If inconsistent, output: INCONSISTENT: [one sentence describing the specific contradiction]
+        """
+        try:
+            consistency_llm = get_llm(profile_name, "validator")
+            consistency_check = consistency_llm.invoke([HumanMessage(content=consistency_prompt)]).content.strip()
+            if consistency_check.startswith("INCONSISTENT"):
+                print(f"  [Consistency Warning] {consistency_check}")
+                # Append warning to the reaction so the user can see it in the UI
+                res = res + f"\n\n⚠️ CONSISTENCY WARNING: {consistency_check.replace('INCONSISTENT:', '').strip()}"
+        except Exception as e:
+            print(f"  [Consistency Check Error] {e}")
+
     if "REFUSAL" in res: return False, res
 
     # 9. Save to Memory (DB)
