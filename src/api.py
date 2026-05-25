@@ -459,8 +459,8 @@ def get_scene_generation_log(profile: str, filename: str):
 @app.post("/state/analyze/{profile}")
 def analyze_state_changes(profile: str, payload: AnalysisRequest):
     """
-    Reads selected scene files and uses AI to extract new facts (Allies, Assets, Dates).
-    Returns the hypothesized new state structure.
+    Reads selected scene files and uses AI to extract new facts.
+    Returns proposed state and any detected conflicts for user review.
     """
     try:
         combined_text = ""
@@ -468,8 +468,8 @@ def analyze_state_changes(profile: str, payload: AnalysisRequest):
             content = engine.read_file_content(profile, fname)
             combined_text += f"\n=== {fname} ===\n{content}\n"
 
-        new_state = engine.analyze_state_changes(profile, combined_text, timeline=payload.timeline)
-        return new_state
+        result = engine.analyze_state_changes(profile, combined_text, timeline=payload.timeline)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

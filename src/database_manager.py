@@ -469,6 +469,22 @@ def list_backups(profile_name: str) -> List[Dict]:
         result.append({"filename": filename, "display": display})
     return result
 
+def get_recent_backup_states(profile_name: str, count: int = 3) -> List[dict]:
+    """Returns the last N backup states as parsed dicts, newest first."""
+    paths = get_paths(profile_name)
+    backup_files = sorted(
+        glob.glob(os.path.join(paths['data'], "world_state_backup_*.json")),
+        reverse=True
+    )
+    states = []
+    for f in backup_files[:count]:
+        try:
+            with open(f, 'r') as fh:
+                states.append(json.load(fh))
+        except Exception as e:
+            print(f"Backup read error {f}: {e}")
+    return states
+
 def restore_backup(profile_name: str, backup_filename: str):
     """Restores a specific backup as the active world state."""
     paths = get_paths(profile_name)

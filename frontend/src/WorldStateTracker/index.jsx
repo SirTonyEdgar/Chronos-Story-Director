@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
   Save, User, Briefcase, Users, Coins, Zap, Globe, FileJson, 
   Sparkles, ChevronDown, ChevronRight, FileText, Check,
-  RotateCcw, Clock
+  RotateCcw, Clock, AlertTriangle, CheckCircle2, XCircle
 } from 'lucide-react';
 import { API_URL } from '../config';
 import { TimelineDropdown } from '../components/SharedComponents';
@@ -42,6 +42,11 @@ export default function WorldStateTracker({ profile }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeTimeline, setAnalyzeTimeline] = useState("");
+
+  // --- CONFLICT STATE ---
+  const [pendingState, setPendingState] = useState(null);
+  const [conflicts, setConflicts] = useState([]);
+  const [showConflicts, setShowConflicts] = useState(false);
 
   // --- ROLLBACK STATE ---
   const [showRollback, setShowRollback] = useState(false);
@@ -104,21 +109,55 @@ export default function WorldStateTracker({ profile }) {
     if (selectedFiles.length === 0) return toast("Please select files to analyze.", "warning");
     
     setIsAnalyzing(true);
+    setConflicts([]);
+    setPendingState(null);
+    setShowConflicts(false);
+
     try {
       const res = await axios.post(`${API_URL}/state/analyze/${profile}`, {
         filenames: selectedFiles,
         timeline: analyzeTimeline
       });
-      setState(res.data);
-      toast("Analysis complete. World state has been updated.", "success");
-      setShowAnalysis(false);
-      setSelectedFiles([]); 
+
+      const { proposed_state, conflicts: detectedConflicts } = res.data;
+
+      if (detectedConflicts && detectedConflicts.length > 0) {
+        // Conflicts found — hold the proposed state for review
+        setPendingState(proposed_state);
+        setConflicts(detectedConflicts);
+        setShowConflicts(true);
+        setShowAnalysis(false);
+        setSelectedFiles([]);
+        toast(`Analysis complete. ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? 's' : ''} detected — review before applying.`, "warning");
+      } else {
+        // No conflicts — apply immediately
+        setState(proposed_state);
+        toast("Analysis complete. No conflicts detected. World state updated.", "success");
+        setShowAnalysis(false);
+        setSelectedFiles([]);
+      }
     } catch (err) {
       console.error(err);
       toast("Analysis Error: " + err.message, "error");
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleApplyAnyway = () => {
+    if (!pendingState) return;
+    setState(pendingState);
+    setPendingState(null);
+    setConflicts([]);
+    setShowConflicts(false);
+    toast("Proposed state applied despite conflicts.", "warning");
+  };
+
+  const handleRejectProposal = () => {
+    setPendingState(null);
+    setConflicts([]);
+    setShowConflicts(false);
+    toast("Proposed state discarded. Current state unchanged.", "info");
   };
 
   const toggleFileSelection = (fname) => {
@@ -249,6 +288,57 @@ export default function WorldStateTracker({ profile }) {
             </div>
           )}
         </div>
+
+        {/* Conflict Review Panel */}
+        {showConflicts && conflicts.length > 0 && (
+          <div style={styles.conflictBox}>
+            <div style={styles.conflictHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <AlertTriangle size={18} color="#f59e0b" />
+                <span style={{ fontWeight: 'bold', color: '#fbbf24' }}>
+                  {conflicts.length} Conflict{conflicts.length > 1 ? 's' : ''} Detected
+                </span>
+                <span style={{ fontSize: '12px', color: '#888' }}>
+                  — Review before applying the proposed state
+                </span>
+              </div>
+            </div>
+
+            <div style={styles.conflictBody}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                {conflicts.map((c, i) => (
+                  <div key={i} style={styles.conflictItem}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                      <AlertTriangle size={14} color="#f59e0b" style={{ marginTop: '2px', flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#fbbf24', marginBottom: '3px' }}>
+                          {c.field}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#a1a1aa' }}>
+                          <span style={{ color: '#94a3b8' }}>Was:</span> {String(c.old_value)} 
+                          <span style={{ color: '#475569', margin: '0 6px' }}>→</span>
+                          <span style={{ color: '#94a3b8' }}>Proposed:</span> {String(c.new_value)}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#71717a', marginTop: '3px', fontStyle: 'italic' }}>
+                          {c.reason}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button onClick={handleRejectProposal} style={styles.conflictRejectBtn}>
+                  <XCircle size={14} /> Discard Proposal
+                </button>
+                <button onClick={handleApplyAnyway} style={styles.conflictApplyBtn}>
+                  <CheckCircle2 size={14} /> Apply Anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Restore from Backup (Collapsible) */}
         <div style={styles.rollbackBox}>
@@ -381,7 +471,7 @@ const styles = {
   title: { margin: 0, display: 'flex', alignItems: 'center', gap: '12px', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.5px' },
   fab: { position: 'fixed', bottom: '30px', right: '40px', height: '48px', borderRadius: '24px', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' },
   
-  // Analysis panel (unchanged)
+  // Analysis panel
   analysisBox: { marginBottom: '15px', border: '1px solid #333', borderRadius: '8px', background: '#111', overflow: 'hidden' },
   analysisHeader: { padding: '15px 20px', background: '#1a1a1a', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   analysisBody: { padding: '20px', borderTop: '1px solid #333' },
@@ -389,6 +479,14 @@ const styles = {
   fileGrid: { maxHeight: '200px', overflowY: 'auto', border: '1px solid #333', borderRadius: '6px', padding: '10px', background: '#0e0e0e', marginBottom: '15px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '8px' },
   fileItem: { padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s' },
   analyzeBtn: { width: '100%', padding: '12px', background: '#a855f7', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', transition: 'background 0.2s' },
+
+  // Conflict panel
+  conflictBox: { marginBottom: '15px', border: '1px solid #854d0e', borderRadius: '8px', background: '#111', overflow: 'hidden' },
+  conflictHeader: { padding: '15px 20px', background: '#1c1207', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  conflictBody: { padding: '20px', borderTop: '1px solid #854d0e' },
+  conflictItem: { padding: '12px', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '6px' },
+  conflictRejectBtn: { display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
+  conflictApplyBtn: { display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'rgba(245,158,11,0.1)', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' },
 
   // Rollback panel
   rollbackBox: { marginBottom: '30px', border: '1px solid #2a2208', borderRadius: '8px', background: '#111', overflow: 'hidden' },
@@ -398,7 +496,7 @@ const styles = {
   backupItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '6px' },
   restoreBtn: { background: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', color: '#f59e0b', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s', flexShrink: 0 },
 
-  // Tabs and content (unchanged)
+  // Tabs and content
   tabContainer: { display: 'flex', gap: '5px', marginBottom: '0', borderBottom: '1px solid #333' },
   tabButton: { padding: '12px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', borderTop: 'none', borderLeft: 'none', borderRight: 'none', transition: 'all 0.2s', outline: 'none' },
   contentArea: { background: '#151515', padding: '25px', borderRadius: '0 0 8px 8px', minHeight: '500px', border: '1px solid #222', borderTop: 'none' }

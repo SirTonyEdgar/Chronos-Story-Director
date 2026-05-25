@@ -113,6 +113,7 @@ def complete_project(p, i, l, t="Fact"): return db.complete_project(p, i, l, t)
 def get_fragment_titles_by_ids(profile, ids): return db.get_fragment_titles_by_ids(profile, ids)
 def get_generation_log(profile, filename): return db.get_generation_log(profile, filename)
 def list_backups(profile): return db.list_backups(profile)
+def get_recent_backup_states(profile, count=3): return db.get_recent_backup_states(profile, count)
 def restore_backup(profile, filename): return db.restore_backup(profile, filename)
 
 def get_next_chapter_number(profile_name):
@@ -1888,19 +1889,97 @@ def analyze_state_changes(profile_name, scene_content, timeline=""):
         res = llm.invoke([HumanMessage(content=prompt)]).content
         new_state = _extract_json(res)
         
-        # Robust merge logic: If LLM returns partial, merge it. If full, swap it.
         if new_state:
-            # Simple check: if key sections are missing, treat as partial update
             if "Protagonist Status" not in new_state:
                 state.update(new_state)
-                return state
+                final_state = state
             else:
-                return new_state
-        return state
+                final_state = new_state
 
-    except Exception as e: 
+            conflicts = detect_state_conflicts(profile_name, final_state)
+            return {"proposed_state": final_state, "conflicts": conflicts}
+
+        return {"proposed_state": state, "conflicts": []}
+
+    except Exception as e:
         print(f"Analysis Error: {e}")
-        return state
+        return {"proposed_state": state, "conflicts": []}
+
+def detect_state_conflicts(profile_name: str, proposed_state: dict) -> List[dict]:
+    """
+    Compares a proposed world state against the last 3 backups.
+    Returns a list of flagged contradictions for user review.
+    """
+    recent_states = db.get_recent_backup_states(profile_name, count=3)
+    if not recent_states:
+        return []
+
+    # Build a compact summary of recent states for comparison
+    # We only send Cast, Assets, Variables, and Current_Year — not the full state
+    def compact(state):
+        return {
+            "Current_Year": state.get("Current_Year", "Unknown"),
+            "Cast": [
+                {
+                    "Name": c.get("Name"),
+                    "Role": c.get("Role"),
+                    "Loyalty": c.get("Loyalty"),
+                    "Tags": c.get("Tags", [])
+                }
+                for c in state.get("Cast", [])
+            ],
+            "Assets": [
+                {"Name": a.get("Name"), "Status": a.get("Status", "Active")}
+                for a in state.get("Assets", [])
+            ],
+            "World Variables": [
+                {"Name": v.get("Name"), "Value": v.get("Value")}
+                for v in state.get("World Variables", [])
+            ]
+        }
+
+    recent_compact = [compact(s) for s in recent_states]
+    proposed_compact = compact(proposed_state)
+
+    prompt = f"""
+    ROLE: Continuity Auditor.
+    TASK: Compare a proposed world state update against recent saved states and flag contradictions.
+
+    *** RECENT SAVED STATES (newest first) ***
+    {json.dumps(recent_compact, indent=2)}
+
+    *** PROPOSED NEW STATE ***
+    {json.dumps(proposed_compact, indent=2)}
+
+    *** INSTRUCTIONS ***
+    Check for contradictions between the proposed state and the recent saves:
+    1. CHARACTER: Loyalty changed by more than 25 points with no gradual trend in recent saves
+    2. CHARACTER: Role changed (e.g. Support -> Antagonist) without a matching trend
+    3. CHARACTER: A character present in recent saves is now missing entirely
+    4. ASSET: An asset marked Active in recent saves is now missing or Destroyed without a clear trend
+    5. YEAR: Current_Year moved backwards (flashback protection)
+    6. VARIABLE: A world variable changed dramatically in a single jump
+
+    For each contradiction found, output a JSON object with:
+    - field: the field name (e.g. "Cast.John Smith.Loyalty")
+    - old_value: what it was in the most recent save
+    - new_value: what the proposed state says
+    - reason: one sentence explaining why this is suspicious
+
+    OUTPUT: JSON array only. If no contradictions found, output: []
+    Example: [{{"field": "Cast.John.Loyalty", "old_value": 80, "new_value": 20, "reason": "Loyalty dropped 60 points in a single update with no gradual trend."}}]
+    """
+
+    try:
+        llm = get_llm(profile_name, "validator")
+        res = llm.invoke([HumanMessage(content=prompt)]).content
+        conflicts = _extract_json(res)
+        if isinstance(conflicts, list):
+            return conflicts
+        return []
+    except Exception as e:
+        print(f"Conflict detection error: {e}")
+        return []
 
 # ==========================================
 # 9. NETWORK MAP
