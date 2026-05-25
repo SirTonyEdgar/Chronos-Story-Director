@@ -99,6 +99,7 @@ def update_fragment(p, i, c, tl=""): return db.update_fragment(p, i, c, tl)
 def update_fragment_metadata(profile, frag_id, new_metadata): return db.update_fragment_metadata(profile, frag_id, new_metadata)
 def update_fragment_reveal_date(profile, frag_id, reveal_date): return db.update_fragment_reveal_date(profile, frag_id, reveal_date)
 def get_all_fragments_for_remetadata(profile): return db.get_all_fragments_for_remetadata(profile)
+def keyword_search_fragments(profile, query, doc_types=None): return db.keyword_search_fragments(profile, query, doc_types)
 def delete_fragment(p, i): return db.delete_fragment(p, i)
 def rename_fragment(p, i, n): return db.rename_fragment(p, i, n)
 def get_chat_history(p): return db.get_chat_history(p)
@@ -500,6 +501,53 @@ def _scene_before_reveal(scene_year: int, scene_date: str, reveal_date: str, pro
         return res.startswith("YES")
     except Exception:
         return True
+
+def check_upcoming_spoilers(profile_name: str, scene_year: int, scene_date: str) -> List[dict]:
+    """
+    Checks if the scene date is dangerously close to any spoiler reveal dates.
+    Returns a list of warnings for spoilers that reveal within 30 narrative days.
+    Does not suppress anything — purely informational.
+    """
+    if not scene_year and not scene_date:
+        return []
+
+    s_rows = db.get_fragments(profile_name, "Spoiler")
+    warnings = []
+
+    for r in s_rows:
+        reveal_date = r[6] if len(r) > 6 else ""
+        if not reveal_date:
+            continue
+
+        content = r[2]
+        scene_context = f"{scene_date}, {scene_year}".strip(", ")
+
+        prompt = f"""
+        TASK: Determine if a reveal date is imminent relative to the current narrative date.
+
+        Current narrative date: {scene_context}
+        Reveal date: {reveal_date}
+        Spoiler content: {content[:200]}
+
+        Is the reveal date within approximately 30 narrative days of the current date?
+        Answer YES if it is imminent (within ~30 days).
+        Answer NO if it is further away or already past.
+        Output YES or NO only.
+        """
+
+        try:
+            llm = get_llm(profile_name, "librarian")
+            res = llm.invoke([HumanMessage(content=prompt)]).content.strip().upper()
+            if res.startswith("YES"):
+                warnings.append({
+                    "content": content,
+                    "reveal_date": reveal_date,
+                    "message": f"Spoiler '{content[:60]}...' reveals on {reveal_date} — close to this scene's date."
+                })
+        except Exception:
+            continue
+
+    return warnings
 
 def get_global_context(profile_name: str, current_timeline: str = "", scene_year: int = 0, scene_date: str = ""):
     """
@@ -1420,6 +1468,7 @@ def dry_run_scene(
         "inferred_year": final_year,
         "inferred_date": final_date,
         "inferred_time": final_time,
+        "upcoming_spoiler_warnings": check_upcoming_spoilers(profile, final_year, final_date),
     }
 
 def bulk_regenerate_metadata(profile_name: str) -> dict:

@@ -345,6 +345,48 @@ def get_all_fragments_for_remetadata(profile_name: str) -> List[tuple]:
     finally:
         conn.close()
 
+def keyword_search_fragments(profile_name: str, query: str, doc_types: Optional[List[str]] = None) -> List[dict]:
+    """
+    Searches fragments by exact or partial keyword match against
+    source_filename, content, and metadata. Bypasses the AI Librarian.
+    """
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        search_term = f"%{query.lower()}%"
+        if doc_types:
+            placeholders = ','.join(['?'] * len(doc_types))
+            c.execute(
+                f"""SELECT id, source_filename, content, type, metadata, timeline, reveal_date
+                    FROM memory_fragments
+                    WHERE type IN ({placeholders})
+                    AND (LOWER(source_filename) LIKE ? OR LOWER(content) LIKE ? OR LOWER(metadata) LIKE ?)
+                    ORDER BY type, id DESC""",
+                (*doc_types, search_term, search_term, search_term)
+            )
+        else:
+            c.execute(
+                """SELECT id, source_filename, content, type, metadata, timeline, reveal_date
+                   FROM memory_fragments
+                   WHERE LOWER(source_filename) LIKE ? OR LOWER(content) LIKE ? OR LOWER(metadata) LIKE ?
+                   ORDER BY type, id DESC""",
+                (search_term, search_term, search_term)
+            )
+        rows = c.fetchall()
+        return [
+            {
+                "id": r[0], "name": r[1], "content": r[2][:500],
+                "type": r[3], "metadata": r[4] or "", "timeline": r[5] or ""
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        print(f"Keyword search error: {e}")
+        return []
+    finally:
+        conn.close()
+
 def delete_fragment(profile_name, frag_id):
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])

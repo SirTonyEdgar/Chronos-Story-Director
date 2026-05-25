@@ -198,6 +198,22 @@ def predict_next_chapter(profile: str):
     """Calculates the next available chapter number based on existing files."""
     return {"next_chapter": engine.get_next_chapter_number(profile)}
 
+@app.post("/scene/spoiler_check/{profile}")
+def check_scene_spoilers(profile: str, payload: SceneGenerationRequest):
+    """
+    Checks if the scene date is close to any spoiler reveal dates.
+    Returns warnings without suppressing or blocking anything.
+    """
+    try:
+        result = engine.check_upcoming_spoilers(
+            profile,
+            scene_year=payload.year,
+            scene_date=payload.date_str
+        )
+        return {"warnings": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/scene/generate/{profile}")
 def generate_new_scene(profile: str, payload: SceneGenerationRequest):
     """Triggers the AI to write a new scene based on the brief and context."""
@@ -339,6 +355,19 @@ def list_knowledge_fragments(profile: str, category: str):
         } 
         for f in fragments
     ]
+
+@app.get("/knowledge/search/{profile}")
+def keyword_search_knowledge(profile: str, q: str, types: Optional[str] = None):
+    """
+    Keyword search across all fragments — bypasses the AI Librarian.
+    Returns partial content matches on filename, content, and metadata.
+    """
+    try:
+        doc_types = types.split(",") if types else None
+        results = engine.keyword_search_fragments(profile, q, doc_types)
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/knowledge/create/{profile}")
 def create_knowledge_entry(profile: str, item: KnowledgeItem):

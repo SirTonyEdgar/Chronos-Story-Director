@@ -250,6 +250,9 @@ export default function SceneCreator({ profile }) {
   const [isDryRunning, setIsDryRunning] = useState(false);
   const [dryRunResult, setDryRunResult] = useState(null);
 
+  // --- SPOILER WARNING STATE ---
+  const [spoilerWarnings, setSpoilerWarnings] = useState([]);
+
   // --- INITIALIZATION ---
 
   useEffect(() => {
@@ -352,6 +355,15 @@ export default function SceneCreator({ profile }) {
     if (!brief) return toast("Please provide a Scene Brief.", "warning");
     setDryRunResult(null);
     setIsGenerating(true);
+    // Check for upcoming spoilers near the scene date
+    if (year || dateStr) {
+      try {
+        const warnRes = await axios.post(`${API_URL}/scene/spoiler_check/${profile}`, buildPayload());
+        setSpoilerWarnings(warnRes.data.warnings || []);
+      } catch (err) {
+        setSpoilerWarnings([]);
+      }
+    }
     try {
       const res = await axios.post(`${API_URL}/scene/generate/${profile}`, buildPayload(overrideOutline));
       await refreshFileList();
@@ -643,7 +655,7 @@ export default function SceneCreator({ profile }) {
               <label style={styles.label}>Scene Brief</label>
               <textarea 
                 value={brief} 
-                onChange={e => setBrief(e.target.value)} 
+                onChange={e => { setBrief(e.target.value); setSpoilerWarnings([]); }} 
                 placeholder="Describe key events, conflicts, and outcomes..." 
                 style={styles.textarea} 
               />
@@ -661,6 +673,21 @@ export default function SceneCreator({ profile }) {
                 Enable Fog of War (Private thoughts are tagged separately)
               </label>
             </div>
+
+            {/* Spoiler Proximity Warnings */}
+            {spoilerWarnings.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {spoilerWarnings.map((w, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 14px', background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '6px' }}>
+                    <span style={{ fontSize: '14px', flexShrink: 0 }}>⚠️</span>
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#a855f7', fontWeight: '700', marginBottom: '2px' }}>SPOILER PROXIMITY WARNING</div>
+                      <div style={{ fontSize: '12px', color: '#a1a1aa' }}>{w.message}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Row 6: Action Buttons */}
             <div style={{ display: 'flex', gap: '12px' }}>

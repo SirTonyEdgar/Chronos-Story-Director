@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Book, Shield, Map, FileText, EyeOff, RefreshCw, CheckCircle2, Users, Network } from 'lucide-react';
+import { Book, Shield, Map, FileText, EyeOff, RefreshCw, CheckCircle2, Users, Network, Search } from 'lucide-react';
 import { API_URL } from '../config';
 import { toast, confirm } from '../components/Notifications';
 
@@ -56,6 +56,27 @@ export default function KnowledgeBase({ profile }) {
     { id: "Spoilers", icon: <EyeOff size={16} />, label: "Spoilers", color: "#8b5cf6" },
   ];
 
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleGlobalSearch = async (query) => {
+    setGlobalSearch(query);
+    if (!query.trim() || query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const res = await axios.get(`${API_URL}/knowledge/search/${profile}?q=${encodeURIComponent(query)}`);
+      setSearchResults(res.data || []);
+    } catch (err) {
+      console.error("Search failed:", err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   return (
     <div style={styles.container}>
       
@@ -63,7 +84,57 @@ export default function KnowledgeBase({ profile }) {
       <div style={styles.header}>
         <h2 style={styles.title}>🗄️ Knowledge Base</h2>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, justifyContent: 'flex-end' }}>
+
+          {/* Global Keyword Search */}
+          <div style={{ position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: '6px', padding: '8px 12px' }}>
+              <Search size={14} color="#555" />
+              <input
+                value={globalSearch}
+                onChange={e => handleGlobalSearch(e.target.value)}
+                placeholder="Search all knowledge..."
+                style={{ background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '13px', width: '200px' }}
+              />
+              {isSearching && <span style={{ fontSize: '11px', color: '#555' }}>...</span>}
+              {globalSearch && (
+                <button onClick={() => { setGlobalSearch(""); setSearchResults([]); }} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: '0' }}>
+                  ×
+                </button>
+              )}
+            </div>
+
+            {searchResults.length > 0 && globalSearch && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, width: '480px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: '6px', marginTop: '4px', zIndex: 100, maxHeight: '400px', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.8)' }}>
+                <div style={{ padding: '8px 12px', borderBottom: '1px solid #27272a', fontSize: '11px', color: '#555', fontWeight: '700' }}>
+                  {searchResults.length} RESULT{searchResults.length !== 1 ? 'S' : ''} FOR "{globalSearch}"
+                </div>
+                {searchResults.map(r => (
+                  <div
+                    key={r.id}
+                    onClick={() => { setActiveTab(r.type); setGlobalSearch(""); setSearchResults([]); }}
+                    style={{ padding: '10px 14px', borderBottom: '1px solid #1a1a1a', cursor: 'pointer', transition: 'background 0.1s' }}
+                    onMouseOver={e => e.currentTarget.style.background = '#27272a'}
+                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                      <span style={{ fontSize: '13px', color: '#e4e4e7', fontWeight: '600' }}>{r.name}</span>
+                      <span style={{ fontSize: '10px', color: '#555', background: '#27272a', padding: '2px 6px', borderRadius: '4px' }}>{r.type}</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#71717a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {r.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {searchResults.length === 0 && globalSearch.length >= 2 && !isSearching && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, width: '300px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: '6px', marginTop: '4px', zIndex: 100, padding: '12px', fontSize: '13px', color: '#555', textAlign: 'center' }}>
+                No results for "{globalSearch}"
+              </div>
+            )}
+          </div>
 
           {/* Result Badge */}
           {remetadataResult && (
