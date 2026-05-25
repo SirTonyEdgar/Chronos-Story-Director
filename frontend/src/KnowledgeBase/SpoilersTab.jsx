@@ -7,6 +7,7 @@ import { toast } from '../components/Notifications';
 export default function SpoilersTab({ profile }) {
   const [spoilers, setSpoilers] = useState([]);
   const [newBan, setNewBan] = useState("");
+  const [newRevealDate, setNewRevealDate] = useState("");
 
   // Reload when profile changes
   useEffect(() => { 
@@ -26,9 +27,11 @@ export default function SpoilersTab({ profile }) {
       await axios.post(`${API_URL}/knowledge/create/${profile}`, {
         name: "Spoiler_Alert",
         content: newBan,
-        category: "Spoiler"
+        category: "Spoiler",
+        reveal_date: newRevealDate
       });
       setNewBan("");
+      setNewRevealDate("");
       fetchSpoilers();
     } catch (err) { toast("Failed to add ban.", "error"); }
   };
@@ -55,19 +58,32 @@ export default function SpoilersTab({ profile }) {
       </div>
 
       {/* INPUT */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '30px' }}>
-        <input 
-          value={newBan} 
-          onChange={e => setNewBan(e.target.value)}
-          placeholder="Enter secret to hide (e.g. 'Darth Vader is the father')..."
-          style={{ flex: 1, padding: '12px', borderRadius: '6px', border: '1px solid #333', background: '#18181b', color: '#fff', outline: 'none' }}
-        />
-        <button 
-          onClick={handleAdd}
-          style={{ background: '#dc2626', color: 'white', border: 'none', padding: '0 24px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-        >
-          <Plus size={18}/> Ban Term
-        </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input 
+            value={newBan} 
+            onChange={e => setNewBan(e.target.value)}
+            placeholder="Enter secret to hide (e.g. 'Darth Vader is the father')..."
+            style={{ flex: 1, padding: '12px', borderRadius: '6px', border: '1px solid #333', background: '#18181b', color: '#fff', outline: 'none' }}
+          />
+          <button 
+            onClick={handleAdd}
+            style={{ background: '#dc2626', color: 'white', border: 'none', padding: '0 24px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <Plus size={18}/> Ban Term
+          </button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <input 
+            value={newRevealDate} 
+            onChange={e => setNewRevealDate(e.target.value)}
+            placeholder="Reveal Date (optional) — e.g. 1987-06-15 or June 15, 1987 or Day 47 of the Red Moon"
+            style={{ flex: 1, padding: '10px 12px', borderRadius: '6px', border: '1px solid #333', background: '#18181b', color: '#a1a1aa', outline: 'none', fontSize: '13px' }}
+          />
+          <span style={{ fontSize: '12px', color: '#52525b', whiteSpace: 'nowrap' }}>
+            Leave blank to suppress permanently
+          </span>
+        </div>
       </div>
 
       {/* LIST */}
@@ -76,7 +92,18 @@ export default function SpoilersTab({ profile }) {
           <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#18181b', padding: '15px 20px', borderRadius: '6px', border: '1px solid #333' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
               <AlertTriangle size={18} color="#fbbf24" />
-              <span style={{ fontFamily: 'monospace', fontSize: '14px', color: '#e4e4e7', fontWeight: 'bold' }}>STOP: {s.content}</span>
+              <div>
+                <span style={{ fontFamily: 'monospace', fontSize: '14px', color: '#e4e4e7', fontWeight: 'bold' }}>STOP: {s.content}</span>
+                {s.reveal_date ? (
+                  <div style={{ fontSize: '11px', color: '#a855f7', marginTop: '4px' }}>
+                    Reveals after: {s.reveal_date}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '11px', color: '#52525b', marginTop: '4px' }}>
+                    Permanently suppressed
+                  </div>
+                )}
+              </div>
             </div>
             <button onClick={() => handleDelete(s.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#71717a', padding: '5px' }} title="Remove Ban">
               <Trash2 size={18} />

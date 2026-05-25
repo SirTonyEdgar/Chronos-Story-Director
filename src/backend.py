@@ -88,9 +88,10 @@ def read_file_content(p, f): return db.read_file_content(p, f)
 def get_world_state(p): return db.get_world_state(p)
 def save_world_state(p, s): return db.save_world_state(p, s)
 def get_fragments(p, c): return db.get_fragments(p, c)
-def add_fragment(p, n, c, t, tl=""): return db.add_fragment(p, n, c, t, tl)
+def add_fragment(p, n, c, t, tl="", reveal_date=""): return db.add_fragment(p, n, c, t, tl, reveal_date)
 def update_fragment(p, i, c, tl=""): return db.update_fragment(p, i, c, tl)
 def update_fragment_metadata(profile, frag_id, new_metadata): return db.update_fragment_metadata(profile, frag_id, new_metadata)
+def update_fragment_reveal_date(profile, frag_id, reveal_date): return db.update_fragment_reveal_date(profile, frag_id, reveal_date)
 def get_all_fragments_for_remetadata(profile): return db.get_all_fragments_for_remetadata(profile)
 def delete_fragment(p, i): return db.delete_fragment(p, i)
 def rename_fragment(p, i, n): return db.rename_fragment(p, i, n)
@@ -461,18 +462,66 @@ def get_last_scenes(profile_name):
         context += f"\n=== PREV: {f} ===\n{content[:3000]}\n"
     return context
 
-def get_global_context(profile_name: str):
-    """Retrieves immutable context layers (Rules, Plan, Spoilers)."""
-    # Fetch by type using DB Manager
-    r_rows = db.get_fragments(profile_name, "Rulebook")
+def _scene_before_reveal(scene_year: int, scene_date: str, reveal_date: str, profile_name: str) -> bool:
+    """
+    Asks the LLM whether the reveal_date is still in the future relative to the current scene.
+    Handles any calendar system or date format — no Gregorian assumptions.
+    Returns True if the spoiler should still be suppressed.
+    """
+    if not reveal_date:
+        return True
+    if not scene_date and not scene_year:
+        return True
+
+    scene_context = f"{scene_date}, {scene_year}".strip(", ")
+
+    prompt = f"""
+    TASK: Determine if a specific date is still in the future relative to the current narrative date.
+
+    Current narrative date: {scene_context}
+    Reveal date: {reveal_date}
+
+    Is the reveal date still in the future relative to the current narrative date?
+    Answer YES if the reveal date has not happened yet.
+    Answer NO if the reveal date has already passed or is the same date.
+    Output YES or NO only.
+    """
+
+    try:
+        llm = get_llm(profile_name, "librarian")
+        res = llm.invoke([HumanMessage(content=prompt)]).content.strip().upper()
+        return res.startswith("YES")
+    except Exception:
+        return True
+
+def get_global_context(profile_name: str, current_timeline: str = "", scene_year: int = 0, scene_date: str = ""):
+    """
+    Retrieves the 'Immutable' context layers that must be present in every generation cycle.
+    1. Rules: The physics/magic/laws of the world.
+    2. Plan: The strategic direction of the story.
+    3. Spoilers: Critical secrets to protect — filtered by reveal_date if scene date is known.
+    """
+    # World Rules
+    r_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Rulebook"), current_timeline)
     rules = "\n\n".join([r[2] for r in r_rows])
-    
-    p_rows = db.get_fragments(profile_name, "Plan")
+
+    # Strategic Plan
+    p_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Plan"), current_timeline)
     plan = p_rows[0][2] if p_rows else "NO PLAN ESTABLISHED."
-    
-    s_rows = db.get_fragments(profile_name, "Spoiler")
-    spoilers = [r[2] for r in s_rows]
-    
+
+    # Spoilers — filter by reveal_date if scene date context is available
+    s_rows = _filter_rows_by_timeline(db.get_fragments(profile_name, "Spoiler"), current_timeline)
+    spoilers = []
+    for r in s_rows:
+        reveal_date = r[6] if len(r) > 6 else ""
+        if not reveal_date:
+            # No reveal date — always suppress
+            spoilers.append(r[2])
+        else:
+            # Has reveal date — suppress only if scene hasn't reached it yet
+            if _scene_before_reveal(scene_year, scene_date, reveal_date, profile_name):
+                spoilers.append(r[2])
+
     return rules, plan, spoilers
 
 # ==========================================
@@ -481,19 +530,20 @@ def get_global_context(profile_name: str):
 
 # --- HELPERS ---
 
-def extract_dynamic_spoilers(plan: str, year: int, profile_name: str, settings: Optional[dict] = None) -> List[str]:
+def extract_dynamic_spoilers(plan: str, year: int, profile_name: str, settings: Optional[dict] = None, date_str: str = "") -> List[str]:
     """
     Parses future events from the 'Plan' to prevent context leakage into the current narrative.
     """
     if not plan or plan == "NO PLAN ESTABLISHED.":
         return []
-        
-    prompt = f"List FUTURE events after {year} from: {plan}. OUTPUT: Comma-separated."
+
+    date_context = f"{date_str}, {year}".strip(", ") if date_str else str(year)
+    prompt = f"List FUTURE events after {date_context} from: {plan}. OUTPUT: Comma-separated list of event descriptions only."
     llm = get_llm(profile_name, "planner", settings=settings)
-    
+
     try:
         response = llm.invoke([HumanMessage(content=prompt)]).content
-        return [x.strip() for x in response.split(',')]
+        return [x.strip() for x in response.split(',') if x.strip()]
     except Exception:
         return []
     
@@ -580,7 +630,11 @@ def plan_scene(state: StoryState) -> dict:
     
     settings = db.get_story_settings(profile)
     state_tracking = db.get_world_state(profile)
-    rules, plan, db_spoilers = get_global_context(profile, current_timeline)
+    rules, plan, db_spoilers = get_global_context(
+        profile, current_timeline,
+        scene_year=state.get('year', 0),
+        scene_date=state.get('date_str', '')
+    )
     
     print(f"  [Planner] Scanning Knowledge Base for: '{brief[:50]}...'")
     relevant_ids = get_relevant_fragment_ids(
@@ -594,7 +648,7 @@ def plan_scene(state: StoryState) -> dict:
     if not smart_context_str:
         smart_context_str = "No specific historical records found for this scene."
 
-    dynamic_spoilers = extract_dynamic_spoilers(plan, state['year'], profile, settings=settings) 
+    dynamic_spoilers = extract_dynamic_spoilers(plan, state['year'], profile, settings=settings, date_str=state.get('date_str', ''))
     all_banned = list(set(db_spoilers + dynamic_spoilers))
     
     use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
@@ -714,7 +768,7 @@ def draft_scene(state: StoryState) -> dict:
 
     # 4. Dynamic Spoiler Injection
     #    Prevents the AI from referencing future events defined in the Plan.
-    dynamic_spoilers = extract_dynamic_spoilers(plan, state['year'], profile, settings=settings) 
+    dynamic_spoilers = extract_dynamic_spoilers(plan, state['year'], profile, settings=settings, date_str=state.get('date_str', ''))
     all_banned = list(set(db_spoilers + dynamic_spoilers))
     
     # 5. Chronology & Era Detection

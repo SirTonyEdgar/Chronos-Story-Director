@@ -128,7 +128,8 @@ def init_db(profile_name: str):
         type TEXT, 
         year INTEGER DEFAULT NULL,
         metadata TEXT DEFAULT '',
-        timeline TEXT DEFAULT ''
+        timeline TEXT DEFAULT '',
+        reveal_date TEXT DEFAULT ''
     )''')
     
     # Add metadata column to older databases
@@ -140,6 +141,11 @@ def init_db(profile_name: str):
     # Add timeline column to older databases
     try:
         c.execute("ALTER TABLE memory_fragments ADD COLUMN timeline TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        c.execute("ALTER TABLE memory_fragments ADD COLUMN reveal_date TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
 
@@ -225,24 +231,23 @@ def get_story_settings(profile_name: str) -> dict:
 # ==========================================
 # --- KNOWLEDGE BASE (CRUD) ---
 # ==========================================
-def add_fragment(profile_name, filename, content, doc_type, timeline=""):
-    """Persists a new document to DB and File System, tagged with an optional timeline."""
-    init_db(profile_name)
+def add_fragment(profile_name: str, source_filename: str, content: str, doc_type: str, timeline: str = "", reveal_date: str = "") -> int:
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30)
     c = conn.cursor()
     c.execute(
-        "INSERT INTO memory_fragments (source_filename, content, type, timeline) VALUES (?, ?, ?, ?)", 
-        (filename, content, doc_type, timeline)
+        "INSERT INTO memory_fragments (source_filename, content, type, timeline, reveal_date) VALUES (?, ?, ?, ?, ?)",
+        (source_filename, content, doc_type, timeline, reveal_date)
     )
+    frag_id = c.lastrowid
     conn.commit()
     conn.close()
-
-    file_path = get_fragment_path(profile_name, doc_type, filename)
+    file_path = get_fragment_path(profile_name, doc_type, source_filename)
     if file_path:
         try:
             with open(file_path, "w", encoding="utf-8") as f: f.write(content)
         except Exception as e: print(f"File Mirror Error: {e}")
+    return frag_id
 
 def get_fragments(profile_name: str, doc_type: Optional[str] = None):
     """Retrieves fragments, now including the timeline data."""
@@ -251,9 +256,9 @@ def get_fragments(profile_name: str, doc_type: Optional[str] = None):
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     if doc_type: 
-        c.execute("SELECT id, source_filename, content, type, metadata, timeline FROM memory_fragments WHERE type = ? ORDER BY id DESC", (doc_type,))
+        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date FROM memory_fragments WHERE type = ? ORDER BY id DESC", (doc_type,))
     else: 
-        c.execute("SELECT id, source_filename, content, type, metadata, timeline FROM memory_fragments ORDER BY type, id DESC")
+        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date FROM memory_fragments ORDER BY id DESC")
     rows = c.fetchall()
     conn.close()
     return rows
@@ -308,6 +313,15 @@ def update_fragment_metadata(profile_name: str, frag_id: int, new_metadata: str)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     c.execute("UPDATE memory_fragments SET metadata = ? WHERE id = ?", (new_metadata, frag_id))
+    conn.commit()
+    conn.close()
+
+def update_fragment_reveal_date(profile_name: str, frag_id: int, reveal_date: str):
+    """Updates the reveal_date field for a specific fragment."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE memory_fragments SET reveal_date = ? WHERE id = ?", (reveal_date, frag_id))
     conn.commit()
     conn.close()
 

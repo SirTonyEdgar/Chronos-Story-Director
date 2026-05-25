@@ -74,6 +74,7 @@ class KnowledgeItem(BaseModel):
     category: str
     id: Optional[int] = None
     timeline: str = ""
+    reveal_date: str = ""
 
 class DeleteRequest(BaseModel):
     id: int
@@ -342,8 +343,8 @@ def list_knowledge_fragments(profile: str, category: str):
 @app.post("/knowledge/create/{profile}")
 def create_knowledge_entry(profile: str, item: KnowledgeItem):
     """Adds a new entry to the knowledge base."""
-    engine.add_fragment(profile, item.name, item.content, item.category, item.timeline)
-    return {"status": "Created"}
+    frag_id = engine.add_fragment(profile, item.name, item.content, item.category, item.timeline, item.reveal_date)
+    return {"status": "Created", "id": frag_id}
 
 @app.post("/knowledge/update/{profile}")
 def update_knowledge_entry(profile: str, item: KnowledgeItem):
@@ -361,6 +362,15 @@ def update_fragment_metadata(profile: str, fragment_id: int, payload: dict):
     try:
         engine.update_fragment_metadata(profile, fragment_id, payload.get("metadata", ""))
         return {"status": "Metadata updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge/reveal_date/{profile}/{fragment_id}")
+def update_fragment_reveal_date(profile: str, fragment_id: int, payload: dict):
+    """Saves the reveal date for a spoiler fragment."""
+    try:
+        engine.update_fragment_reveal_date(profile, fragment_id, payload.get("reveal_date", ""))
+        return {"status": "Reveal date updated"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
