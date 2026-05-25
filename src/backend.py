@@ -294,17 +294,17 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
     prompt = f"""
     TASK: Generate searchable metadata for the text below.
     
-    INSTRUCTION: Read the text and extract:
-    1. A single 1-sentence summary of the main content.
-    2. A comma-separated list of all proper nouns (Characters, Locations, Factions, Unique Items).
-    3. The time period covered (year, year range, or era).
-    4. 3-5 keyword topics describing the content type.
+    INSTRUCTION: Read the text and extract the following, in this exact order:
+    1. All proper nouns — character names, organization names, location names, unique item names.
+    2. The time period covered — a year, year range, or named era.
+    3. 3-7 keyword topics describing the key themes, events, and concepts.
+    4. A 2-3 sentence summary of what this document establishes.
     
-    OUTPUT FORMAT STRICTLY AS:
-    Summary: [sentence]
+    OUTPUT FORMAT STRICTLY AS (no extra text, no markdown):
     Entities: [Name1, Name2, Name3]
-    Period: [e.g. "2005-2019" or "1984-2000" or "2003"]
+    Period: [e.g. "2016-2021" or "1984" or "Post-War Era" or "The Third Age" or "Before the Collapse" or "Unknown"]
     Topics: [topic1, topic2, topic3]
+    Summary: [2-3 sentences describing what this document establishes]
     
     TEXT:
     {content[:32000]}
@@ -322,6 +322,7 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     """
     Scans the 'Table of Contents' (Titles + Metadata) and asks the AI 
     which entries are relevant to the user's query and current timeline.
+    Selection cap scales with query length. Low-confidence results are filtered.
     """
     rows = db.get_fragments(profile_name, doc_type=None)
     
@@ -330,23 +331,26 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     # Format the "Menu" for the AI
     toc_list = []
     for r in rows:
-        # r[3] is the 'type' column
         if doc_types and r[3] not in doc_types:
             continue
-            
-        # r[4] is the 'metadata' column. We add it if it exists.
         meta_text = ""
         if len(r) > 4 and r[4]:
             clean_meta = r[4].replace('\n', ' ')
             meta_text = f" | {clean_meta}"
-            
         toc_list.append(f"ID: {r[0]} | Title: {r[1]} ({r[3]}){meta_text}")
     
     if not toc_list: return []
-    
-    # Limit menu size to save tokens
+
     toc_str = "\n".join(toc_list[:150])
-    
+
+    # Scale cap based on named entity count in query
+    import re
+    # Count capitalised multi-word proper noun clusters as entity references
+    entity_matches = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', user_query)
+    unique_entities = set(entity_matches)
+    max_items = 20 if len(unique_entities) >= 3 else 15
+    print(f"  [Librarian] Query entities detected: {len(unique_entities)} — cap set to {max_items}")
+
     # --- MULTIVERSE FILTERING INSTRUCTION ---
     timeline_instruction = ""
     if current_timeline:
@@ -358,7 +362,7 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
 
     prompt = f"""
     ROLE: Database Librarian.
-    TASK: Select relevant document IDs based on the user's need.
+    TASK: Select relevant document IDs based on the user's need and score each one.
     
     *** AVAILABLE DOCUMENTS & METADATA ***
     {toc_str}
@@ -368,22 +372,43 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     
     *** INSTRUCTION ***
     Analyze the scenario. Identify which documents contain necessary background info based on their Title or Metadata.
-    - If the user mentions a specific character, location, or event, check the 'Entities' and 'Summary' to find the right file.
+    - If the user mentions a specific character, location, or event, check the Entities and Summary fields to find the right file.
     {timeline_instruction}
-    - Select ONLY highly relevant items.
-    - Max 10 items.
-    
-    OUTPUT FORMAT: JSON List of integers ONLY. Example: [1, 14, 22]
+    - Select ONLY relevant items. Maximum {max_items} items.
+    - For each selected item, assign a relevance score from 1-10 where:
+      10 = directly named or essential to the scenario
+      7-9 = highly relevant background context
+      4-6 = marginally relevant, only include if nothing better exists
+      1-3 = tangentially related, do not include
+    - Do NOT include items scoring below 6.
+
+    OUTPUT FORMAT: JSON list of objects ONLY. Example:
+    [{{"id": 1, "score": 9}}, {{"id": 14, "score": 7}}, {{"id": 22, "score": 8}}]
     If nothing is relevant, output: []
     """
-    
+
     llm = get_llm(profile_name, "librarian")
     try:
         res = llm.invoke([HumanMessage(content=prompt)]).content
-        ids = _extract_json(res) 
-        if isinstance(ids, list):
-            return ids
-        return []
+        parsed = _extract_json(res)
+
+        if not isinstance(parsed, list):
+            return []
+
+        # Handle both old format [1, 2, 3] and new format [{"id": 1, "score": 9}]
+        ids = []
+        for item in parsed:
+            if isinstance(item, int):
+                # Fallback: old format with no score, include everything
+                ids.append(item)
+            elif isinstance(item, dict):
+                score = item.get("score", 0)
+                if score >= 6:
+                    ids.append(item["id"])
+
+        print(f"  [Librarian] Retrieved {len(ids)} fragments (cap: {max_items}, threshold: 6)")
+        return ids
+
     except Exception as e:
         print(f"Smart Retrieval Error: {e}")
         return []

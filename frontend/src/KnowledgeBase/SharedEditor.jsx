@@ -178,6 +178,11 @@ export default function SharedEditor({ profile, category, icon, color, descripti
       }
       
       await fetchItems();
+      // Pre-populate metadata template for new entries
+      if (!selectedId) {
+        setEditMetadata("Entities: \nPeriod: \nTopics: \nSummary: ");
+        setShowMeta(true);
+      }
       toast("Entry saved successfully.", "success");
     } catch (err) {
       toast("Save failed: " + (err.response?.data?.detail || err.message), "error");
@@ -430,7 +435,7 @@ export default function SharedEditor({ profile, category, icon, color, descripti
                 <textarea
                   value={editMetadata}
                   onChange={e => setEditMetadata(e.target.value)}
-                  placeholder="No metadata generated yet. Generate a scene or re-run metadata to populate this."
+                  placeholder={"Entities: \nPeriod: \nTopics: \nSummary: "}
                   style={{
                     width: '100%', background: '#111', border: '1px solid #27272a',
                     color: '#a1a1aa', padding: '12px', borderRadius: '6px',
