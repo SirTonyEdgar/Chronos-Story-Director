@@ -149,6 +149,11 @@ def init_db(profile_name: str):
     except sqlite3.OperationalError:
         pass
 
+    try:
+        c.execute("ALTER TABLE generation_logs ADD COLUMN token_usage TEXT DEFAULT '{}'")
+    except sqlite3.OperationalError:
+        pass
+
     c.execute('''CREATE TABLE IF NOT EXISTS story_settings (
         key TEXT PRIMARY KEY, value TEXT
     )''')
@@ -174,6 +179,7 @@ def init_db(profile_name: str):
         validator_result TEXT DEFAULT 'PASS',
         active_spoilers TEXT DEFAULT '',
         timeline TEXT DEFAULT '',
+        token_usage TEXT DEFAULT '{}',
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )''')
 
@@ -499,16 +505,17 @@ def get_fragment_titles_by_ids(profile_name: str, id_list: List[int]) -> List[st
 def save_generation_log(profile_name: str, filename: str, brief: str,
                         retrieved_ids: str, retrieved_titles: str,
                         revision_count: int, validator_result: str,
-                        active_spoilers: str, timeline: str):
+                        active_spoilers: str, timeline: str,
+                        token_usage: str = "{}"):
     """Saves a generation audit log entry for a scene."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30)
     c = conn.cursor()
     c.execute(
         """INSERT INTO generation_logs
-           (filename, brief, retrieved_ids, retrieved_titles, revision_count, validator_result, active_spoilers, timeline)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (filename, brief, retrieved_ids, retrieved_titles, revision_count, validator_result, active_spoilers, timeline)
+           (filename, brief, retrieved_ids, retrieved_titles, revision_count, validator_result, active_spoilers, timeline, token_usage)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (filename, brief, retrieved_ids, retrieved_titles, revision_count, validator_result, active_spoilers, timeline, token_usage)
     )
     conn.commit()
     conn.close()
@@ -521,7 +528,7 @@ def get_generation_log(profile_name: str, filename: str) -> dict:
     try:
         c.execute(
             """SELECT filename, brief, retrieved_ids, retrieved_titles, revision_count,
-                      validator_result, active_spoilers, timeline, timestamp
+                      validator_result, active_spoilers, timeline, timestamp, token_usage
                FROM generation_logs WHERE filename = ? ORDER BY id DESC LIMIT 1""",
             (filename,)
         )
@@ -532,7 +539,8 @@ def get_generation_log(profile_name: str, filename: str) -> dict:
             "retrieved_ids": json.loads(row[2] or '[]'),
             "retrieved_titles": json.loads(row[3] or '[]'),
             "revision_count": row[4], "validator_result": row[5],
-            "active_spoilers": row[6], "timeline": row[7], "timestamp": row[8]
+            "active_spoilers": row[6], "timeline": row[7], "timestamp": row[8],
+            "token_usage": json.loads(row[9] or '{}')
         }
     except Exception as e:
         print(f"Log fetch error: {e}")

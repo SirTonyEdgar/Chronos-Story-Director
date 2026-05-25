@@ -773,6 +773,27 @@ export default function SceneCreator({ profile }) {
                               </div>
                             </div>
 
+                            {/* Token Usage */}
+                            {generationLog.token_usage && generationLog.token_usage.total > 0 && (
+                              <div style={{ width: '100%', marginTop: '4px' }}>
+                                <div style={styles.logLabel}>TOKEN USAGE</div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                  {['planner', 'drafter', 'validator', 'style'].map(role => {
+                                    const usage = generationLog.token_usage[role];
+                                    if (!usage || usage.total === 0) return null;
+                                    return (
+                                      <div key={role} style={{ ...styles.logBadge, background: 'rgba(100,116,139,0.1)', border: '1px solid #334155', color: '#94a3b8' }}>
+                                        {role.charAt(0).toUpperCase() + role.slice(1)}: {usage.total.toLocaleString()}
+                                      </div>
+                                    );
+                                  })}
+                                  <div style={{ ...styles.logBadge, background: 'rgba(100,116,139,0.2)', border: '1px solid #475569', color: '#cbd5e1', fontWeight: '700' }}>
+                                    Total: {generationLog.token_usage.total.toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Brief */}
                             <div>
                               <div style={styles.logLabel}>BRIEF USED</div>

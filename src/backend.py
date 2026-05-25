@@ -76,6 +76,10 @@ class StoryState(TypedDict):
     style_notes: str
     style_result: str
     retrieved_ids: List[int]
+    _planner_tokens: dict
+    _drafter_tokens: dict
+    _validator_tokens: dict
+    _style_tokens: dict
 
 # ==========================================
 # 1. API PROXY LAYER (Bridge to DB Manager)
@@ -619,6 +623,41 @@ def auto_generate_title(profile_name: str, draft_text: str, brief: str) -> str:
 
 # --- CORE GENERATION LOGIC ---
 
+def _extract_token_usage(response) -> dict:
+    """
+    Safely extracts token usage from a LangChain AIMessage response object.
+    Tries usage_metadata first, falls back to response_metadata.
+    """
+    try:
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            u = response.usage_metadata
+            return {
+                "input": u.get("input_tokens", 0),
+                "output": u.get("output_tokens", 0),
+                "total": u.get("total_tokens", 0)
+            }
+        if hasattr(response, 'response_metadata') and response.response_metadata:
+            meta = response.response_metadata
+            # Gemini format
+            if 'usage_metadata' in meta:
+                u = meta['usage_metadata']
+                return {
+                    "input": u.get("prompt_token_count", 0),
+                    "output": u.get("candidates_token_count", 0),
+                    "total": u.get("total_token_count", 0)
+                }
+            # OpenAI format via response_metadata
+            if 'token_usage' in meta:
+                u = meta['token_usage']
+                return {
+                    "input": u.get("prompt_tokens", 0),
+                    "output": u.get("completion_tokens", 0),
+                    "total": u.get("total_tokens", 0)
+                }
+    except Exception:
+        pass
+    return {"input": 0, "output": 0, "total": 0}
+
 def plan_scene(state: StoryState) -> dict:
     """
     Workflow Node 1: The Director (Planner).
@@ -708,7 +747,9 @@ def plan_scene(state: StoryState) -> dict:
     """
     
     llm = get_llm(profile, "planner", settings=settings)
-    response = llm.invoke([HumanMessage(content=prompt)]).content
+    _response = llm.invoke([HumanMessage(content=prompt)])
+    response = _response.content
+    state['_planner_tokens'] = _extract_token_usage(_response)
     
     return {
         "scene_outline": response,
@@ -882,7 +923,15 @@ def draft_scene(state: StoryState) -> dict:
     # 10. Execute Generation
     print(f"  [Drafter] Writing prose based on outline...")
     llm = get_llm(profile, "scene", settings=settings)
-    response = llm.invoke([HumanMessage(content=prompt)]).content
+    _response = llm.invoke([HumanMessage(content=prompt)])
+    response = _response.content
+    existing = state.get('_drafter_tokens', {"input": 0, "output": 0, "total": 0})
+    new_tokens = _extract_token_usage(_response)
+    state['_drafter_tokens'] = {
+        "input": existing["input"] + new_tokens["input"],
+        "output": existing["output"] + new_tokens["output"],
+        "total": existing["total"] + new_tokens["total"]
+    }
     
     return {
         "current_draft": response, 
@@ -941,7 +990,9 @@ def critique_scene(state: StoryState) -> dict:
     
     # Use the 'analysis' model (usually a smarter model like GPT-4o or Claude 3.5 Sonnet)
     llm = get_llm(profile, "validator")
-    res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+    _response = llm.invoke([HumanMessage(content=prompt)])
+    res = _response.content.strip()
+    state['_validator_tokens'] = _extract_token_usage(_response)
     
     # 6. Evaluate the AI's critique
     if res.startswith("PASS"):
@@ -993,7 +1044,9 @@ def enforce_style(state: StoryState) -> dict:
     """
 
     llm = get_llm(profile, "style", settings=settings)
-    res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+    _response = llm.invoke([HumanMessage(content=prompt)])
+    res = _response.content.strip()
+    state['_style_tokens'] = _extract_token_usage(_response)
 
     if res.startswith("PASS"):
         print(f"  [Style Enforcer] PASS.")
@@ -1121,6 +1174,10 @@ def generate_scene(
         "use_fog_of_war": use_fog_of_war,
         "context_files": context_files,
         "retrieved_ids": [],
+        "_planner_tokens": {"input": 0, "output": 0, "total": 0},
+        "_drafter_tokens": {"input": 0, "output": 0, "total": 0},
+        "_validator_tokens": {"input": 0, "output": 0, "total": 0},
+        "_style_tokens": {"input": 0, "output": 0, "total": 0},
         "style_notes": "",
         "style_result": "",
     }
@@ -1172,11 +1229,26 @@ def generate_scene(
     retrieved_titles = db.get_fragment_titles_by_ids(profile, retrieved_ids)
     validator_result = "PASS" if final_state.get('is_grounded') else "FORCE_PASS"
     style_result = final_state.get('style_result', 'N/A')
+    token_usage = {
+        "planner": final_state.get('_planner_tokens', {"input": 0, "output": 0, "total": 0}),
+        "drafter": final_state.get('_drafter_tokens', {"input": 0, "output": 0, "total": 0}),
+        "validator": final_state.get('_validator_tokens', {"input": 0, "output": 0, "total": 0}),
+        "style": final_state.get('_style_tokens', {"input": 0, "output": 0, "total": 0}),
+        "total": sum(
+            v.get("total", 0) for v in [
+                final_state.get('_planner_tokens', {}),
+                final_state.get('_drafter_tokens', {}),
+                final_state.get('_validator_tokens', {}),
+                final_state.get('_style_tokens', {})
+            ]
+        )
+    }
     db.save_generation_log(
         profile_name=profile,
         filename=filename,
         brief=brief[:500],
         retrieved_ids=json.dumps(retrieved_ids),
+        token_usage=json.dumps(token_usage),
         retrieved_titles=json.dumps(retrieved_titles),
         revision_count=final_state.get('revision_count', 1),
         validator_result=f"{validator_result} | Style: {style_result}",
