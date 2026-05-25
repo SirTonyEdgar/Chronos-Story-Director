@@ -80,6 +80,8 @@ class StoryState(TypedDict):
     _drafter_tokens: dict
     _validator_tokens: dict
     _style_tokens: dict
+    voice_notes: str
+    voice_result: str
 
 # ==========================================
 # 1. API PROXY LAYER (Bridge to DB Manager)
@@ -1062,6 +1064,72 @@ def enforce_style(state: StoryState) -> dict:
         "critique_notes": f"STYLE EDITOR FEEDBACK TO FIX: {notes}"
     }
 
+def check_voice_consistency(state: StoryState) -> dict:
+    """
+    Workflow Node 5: Voice Consistency Check.
+    Compares the current draft against the last 3 scenes for character voice consistency.
+    """
+    profile = state['profile_name']
+    settings = db.get_story_settings(profile)
+
+    last_scenes = get_last_scenes(profile)
+    if not last_scenes or last_scenes == "":
+        print(f"  [Voice Check] No prior scenes found — skipping.")
+        return {"voice_result": "PASS", "voice_notes": ""}
+
+    world_state = db.get_world_state(profile)
+    cast = world_state.get("Cast", [])
+    char_names = [c.get("Name", "") for c in cast if c.get("Name")]
+    char_list = ", ".join(char_names[:10]) if char_names else "Unknown"
+
+    prompt = f"""
+    ROLE: Character Voice Auditor.
+    TASK: Check if the characters in the new draft speak and behave consistently with their voice in recent scenes.
+
+    *** RECENT SCENES (voice reference) ***
+    {last_scenes[:6000]}
+
+    *** NEW DRAFT TO CHECK ***
+    {state['current_draft'][:4000]}
+
+    *** KNOWN CHARACTERS ***
+    {char_list}
+
+    *** INSTRUCTIONS ***
+    For each named character who appears in BOTH the recent scenes and the new draft:
+    1. Compare their dialogue register — formal/informal, vocabulary level, speech patterns
+    2. Compare their emotional baseline — are they acting within their established range?
+    3. Compare their behavioral patterns — do their actions match how they've acted before?
+
+    Focus only on clear, specific inconsistencies. Do NOT flag minor variation — characters evolve.
+    Flag only if a character sounds like a completely different person.
+
+    If all characters are consistent, output exactly: PASS
+    If there are inconsistencies, output: VOICE_FAIL, followed by specific issues per character.
+    Example: VOICE_FAIL: John speaks in formal Victorian register here but used street slang in Ch03.
+    """
+
+    llm = get_llm(profile, "validator", settings=settings)
+    try:
+        res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+
+        if res.startswith("PASS"):
+            print(f"  [Voice Check] PASS.")
+            return {"voice_result": "PASS", "voice_notes": ""}
+
+        notes = res.replace("VOICE_FAIL", "").strip().strip(",").strip(":")
+        print(f"  [Voice Check] Inconsistency found: {notes[:100]}")
+
+        return {
+            "voice_result": "VOICE_FAIL",
+            "voice_notes": f"VOICE CONSISTENCY FEEDBACK: {notes}",
+            "critique_notes": f"VOICE CONSISTENCY FEEDBACK: {notes}"
+        }
+
+    except Exception as e:
+        print(f"  [Voice Check Error] {e}")
+        return {"voice_result": "PASS", "voice_notes": ""}
+
 def generate_scene(
     profile: str, 
     chapter_num: Optional[int], 
@@ -1086,9 +1154,9 @@ def generate_scene(
     workflow.add_node("drafter", draft_scene)
     workflow.add_node("validator", critique_scene)
     workflow.add_node("style_enforcer", enforce_style)
+    workflow.add_node("voice_check", check_voice_consistency)
 
     if override_outline:
-        # Skip Planner — user provided a hand-edited outline
         workflow.set_entry_point("drafter")
     else:
         workflow.set_entry_point("planner")
@@ -1106,14 +1174,23 @@ def generate_scene(
 
     def route_after_style(state):
         if state.get('style_result') == "PASS":
-            return END
+            return "voice_check"
         if state['revision_count'] > 3:
             print(f"  [WARNING] Style cap hit on '{state.get('scene_title', 'Unknown')}' — force-passing.")
+            return "voice_check"
+        return "drafter"
+
+    def route_after_voice(state):
+        if state.get('voice_result') == "PASS":
+            return END
+        if state['revision_count'] > 4:
+            print(f"  [WARNING] Voice cap hit on '{state.get('scene_title', 'Unknown')}' — force-passing.")
             return END
         return "drafter"
 
     workflow.add_conditional_edges("validator", route_after_validation)
     workflow.add_conditional_edges("style_enforcer", route_after_style)
+    workflow.add_conditional_edges("voice_check", route_after_voice)
     app = workflow.compile()
     
     # 2. Context Assembly
@@ -1181,6 +1258,8 @@ def generate_scene(
         "_style_tokens": {"input": 0, "output": 0, "total": 0},
         "style_notes": "",
         "style_result": "",
+        "voice_notes": "",
+        "voice_result": "",
     }
     
     # 5. Execute AI Loop
@@ -1230,6 +1309,7 @@ def generate_scene(
     retrieved_titles = db.get_fragment_titles_by_ids(profile, retrieved_ids)
     validator_result = "PASS" if final_state.get('is_grounded') else "FORCE_PASS"
     style_result = final_state.get('style_result', 'N/A')
+    voice_result = final_state.get('voice_result', 'N/A')
     token_usage = {
         "planner": final_state.get('_planner_tokens', {"input": 0, "output": 0, "total": 0}),
         "drafter": final_state.get('_drafter_tokens', {"input": 0, "output": 0, "total": 0}),
@@ -1252,7 +1332,7 @@ def generate_scene(
         token_usage=json.dumps(token_usage),
         retrieved_titles=json.dumps(retrieved_titles),
         revision_count=final_state.get('revision_count', 1),
-        validator_result=f"{validator_result} | Style: {style_result}",
+        validator_result=f"{validator_result} | Style: {style_result} | Voice: {voice_result}",
         active_spoilers=final_state.get('banned_words', ''),
         timeline=timeline
     )
