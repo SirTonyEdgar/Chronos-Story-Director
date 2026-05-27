@@ -107,6 +107,7 @@ def update_fragment_metadata(profile, frag_id, new_metadata):
     result = db.update_fragment_metadata(profile, frag_id, new_metadata)
     invalidate_retrieval_cache(profile)
     return result
+def update_fragment_type(profile, frag_id, new_type): return db.update_fragment_type(profile, frag_id, new_type)
 def update_fragment_reveal_date(profile, frag_id, reveal_date): return db.update_fragment_reveal_date(profile, frag_id, reveal_date)
 def get_all_fragments_for_remetadata(profile): return db.get_all_fragments_for_remetadata(profile)
 def keyword_search_fragments(profile, query, doc_types=None): return db.keyword_search_fragments(profile, query, doc_types)

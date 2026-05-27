@@ -399,6 +399,25 @@ def update_knowledge_entry(profile: str, item: KnowledgeItem):
     engine.rename_fragment(profile, item.id, item.name)
     return {"status": "Updated"}
 
+@app.post("/knowledge/promote/{profile}/{fragment_id}")
+def promote_fragment(profile: str, fragment_id: int, payload: dict):
+    """
+    Promotes a Plan fragment to a different category.
+    Accepts: {"target_type": "Lore" | "Fact" | "Faction" | "Character"}
+    """
+    try:
+        target_type = payload.get("target_type", "")
+        allowed = ["Lore", "Fact", "Faction", "Character"]
+        if target_type not in allowed:
+            raise HTTPException(status_code=400, detail=f"Invalid target type. Must be one of: {allowed}")
+        engine.update_fragment_type(profile, fragment_id, target_type)
+        engine.invalidate_retrieval_cache(profile)
+        return {"status": "Promoted", "new_type": target_type}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/knowledge/metadata/{profile}/{fragment_id}")
 def update_fragment_metadata(profile: str, fragment_id: int, payload: dict):
     """Saves manually edited metadata for a specific fragment."""

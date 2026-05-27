@@ -92,7 +92,8 @@ export default function SharedEditor({ profile, category, icon, color, descripti
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
-  
+  const [isPromoting, setIsPromoting] = useState(false);
+
   // Multiverse State
   const [availableTimelines, setAvailableTimelines] = useState([]);
   
@@ -204,6 +205,23 @@ export default function SharedEditor({ profile, category, icon, color, descripti
       toast("Failed to save metadata: " + err.message, "error");
     } finally {
       setIsSavingMeta(false);
+    }
+  };
+
+  const handlePromote = async (targetType) => {
+    if (!selectedId) return;
+    setIsPromoting(true);
+    try {
+      await axios.post(`${API_URL}/knowledge/promote/${profile}/${selectedId}`, {
+        target_type: targetType
+      });
+      toast(`Promoted to ${targetType}.`, "success");
+      setSelectedId(null);
+      await fetchItems();
+    } catch (err) {
+      toast("Promote failed: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsPromoting(false);
     }
   };
 
@@ -437,6 +455,26 @@ export default function SharedEditor({ profile, category, icon, color, descripti
           )}
 
           <div style={{ display: 'flex', gap: '10px' }}>
+            {selectedId && category === "Plan" && (
+              <div style={{ position: 'relative' }}>
+                <select
+                  onChange={e => { if (e.target.value) handlePromote(e.target.value); e.target.value = ""; }}
+                  disabled={isPromoting}
+                  defaultValue=""
+                  style={{
+                    padding: '8px 12px', background: '#27272a', border: '1px solid #3f3f46',
+                    color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer',
+                    fontSize: '12px', fontWeight: '600', outline: 'none'
+                  }}
+                >
+                  <option value="" disabled>Promote to...</option>
+                  <option value="Lore">→ Lore</option>
+                  <option value="Fact">→ Fact</option>
+                  <option value="Faction">→ Faction</option>
+                  <option value="Character">→ Character</option>
+                </select>
+              </div>
+            )}
             {selectedId && (
               <button 
                 onClick={handleDelete} 

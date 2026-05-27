@@ -328,6 +328,15 @@ def update_fragment_metadata(profile_name: str, frag_id: int, new_metadata: str)
     conn.commit()
     conn.close()
 
+def update_fragment_type(profile_name: str, frag_id: int, new_type: str):
+    """Changes the category/type of a fragment — used for Plan promotion."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE memory_fragments SET type = ? WHERE id = ?", (new_type, frag_id))
+    conn.commit()
+    conn.close()
+
 def update_fragment_reveal_date(profile_name: str, frag_id: int, reveal_date: str):
     """Updates the reveal_date field for a specific fragment."""
     paths = get_paths(profile_name)

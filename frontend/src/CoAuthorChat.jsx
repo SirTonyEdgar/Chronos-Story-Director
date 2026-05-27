@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import { Send, Trash2, Bot, User, Save, FileText, Loader2, Zap } from 'lucide-react';
+import { Send, Trash2, Bot, User, Loader2, Zap } from 'lucide-react';
 import { API_URL } from './config';
 import { toast, confirm } from './components/Notifications';
 
@@ -9,8 +9,6 @@ export default function CoAuthorChat({ profile }) {
   const [history, setHistory] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [saveName, setSaveName] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
   
   // --- MULTIVERSE STATE ---
   const [timeline, setTimeline] = useState("");
@@ -78,28 +76,6 @@ export default function CoAuthorChat({ profile }) {
       setHistory([]);
     } catch (err) {
       toast("Failed to clear history: " + err.message, "error");
-    }
-  };
-
-  const handleSaveDraft = async () => {
-    const lastMsg = history[history.length - 1];
-    if (!lastMsg || lastMsg.role !== "assistant") return;
-    
-    if (!saveName.trim()) return toast("Please enter a filename.", "warning");
-
-    setIsSaving(true);
-    try {
-      // Reusing the Scene Edit endpoint to create a new file
-      await axios.post(`${API_URL}/scene/save/${profile}`, {
-        filename: saveName.endsWith(".txt") ? saveName : `${saveName}.txt`,
-        content: lastMsg.content
-      });
-      toast(`Saved "${saveName}" to Scene Creator!`, "success");
-      setSaveName("");
-    } catch (err) {
-      toast("Save failed: " + err.message, "error");
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -201,27 +177,6 @@ export default function CoAuthorChat({ profile }) {
 
         <div ref={scrollRef} />
       </div>
-
-      {/* SAVE DRAFT TOOL */}
-      {history.length > 0 && history[history.length - 1].role === "assistant" && !loading && (
-        <div style={{ margin: '10px 0', padding: '10px', background: '#18181b', border: '1px solid #27272a', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <FileText size={16} color="#3b82f6" />
-          <span style={{ fontSize: '13px', color: '#a1a1aa', fontWeight: '600' }}>Save Last Response as Draft:</span>
-          <input 
-            value={saveName} 
-            onChange={(e) => setSaveName(e.target.value)}
-            placeholder="Draft_Filename"
-            style={{ background: '#09090b', border: '1px solid #3f3f46', color: '#fff', padding: '8px', borderRadius: '4px', fontSize: '13px', flex: 1, outline: 'none' }}
-          />
-          <button 
-            onClick={handleSaveDraft}
-            disabled={isSaving}
-            style={{ background: '#22c55e', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', transition: 'background 0.2s' }}
-          >
-            <Save size={14} /> {isSaving ? "Saving..." : "Save to Scenes"}
-          </button>
-        </div>
-      )}
 
       {/* INPUT AREA */}
       <div style={{ marginTop: '20px', position: 'relative' }}>
