@@ -296,11 +296,14 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
     """
     AI Summarizer: Creates a dense, keyword-rich metadata string 
     for the Librarian to use during Smart Retrieval.
+    For documents longer than 32000 characters, runs a second pass
+    on the second half and merges the results.
     """
     if not content or len(content.strip()) < 50:
         return ""
-        
-    prompt = f"""
+
+    def _run_metadata_pass(text_chunk: str) -> str:
+        prompt = f"""
     TASK: Generate searchable metadata for the text below.
     
     INSTRUCTION: Read the text and extract the following, in this exact order:
@@ -316,16 +319,62 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
     Summary: [2-3 sentences describing what this document establishes]
     
     TEXT:
-    {content[:32000]}
+    {text_chunk}
     """
+        llm = get_llm(profile_name, "librarian")
+        try:
+            return llm.invoke([HumanMessage(content=prompt)]).content.strip()
+        except Exception as e:
+            print(f"Metadata Generation Error: {e}")
+            return ""
 
-    llm = get_llm(profile_name, "librarian")
-    try:
-        res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
-        return res
-    except Exception as e:
-        print(f"Metadata Generation Error: {e}")
+    # First pass — always runs on first 32000 chars
+    first_pass = _run_metadata_pass(content[:32000])
+
+    # Second pass — only runs if document is longer than 32000 chars
+    if len(content) <= 32000:
+        return first_pass
+
+    print(f"  [Metadata] Document exceeds 32000 chars — running second pass...")
+    second_pass = _run_metadata_pass(content[32000:64000])
+
+    if not second_pass:
+        return first_pass
+
+    # Merge the two passes
+    # Strategy: combine Entities and Topics, keep Period from first pass,
+    # concatenate Summaries
+    def _extract_field(metadata: str, field: str) -> str:
+        for line in metadata.splitlines():
+            if line.lower().startswith(field.lower() + ":"):
+                return line[len(field) + 1:].strip()
         return ""
+
+    entities_1 = _extract_field(first_pass, "Entities")
+    entities_2 = _extract_field(second_pass, "Entities")
+    period = _extract_field(first_pass, "Period")
+    topics_1 = _extract_field(first_pass, "Topics")
+    topics_2 = _extract_field(second_pass, "Topics")
+    summary_1 = _extract_field(first_pass, "Summary")
+    summary_2 = _extract_field(second_pass, "Summary")
+
+    # Deduplicate entities and topics
+    def _merge_lists(a: str, b: str) -> str:
+        items_a = [x.strip() for x in a.strip("[]").split(",") if x.strip()]
+        items_b = [x.strip() for x in b.strip("[]").split(",") if x.strip()]
+        seen = set()
+        merged = []
+        for item in items_a + items_b:
+            if item.lower() not in seen:
+                seen.add(item.lower())
+                merged.append(item)
+        return ", ".join(merged)
+
+    merged_entities = _merge_lists(entities_1, entities_2)
+    merged_topics = _merge_lists(topics_1, topics_2)
+    merged_summary = f"{summary_1} {summary_2}".strip()
+
+    return f"Entities: {merged_entities}\nPeriod: {period}\nTopics: {merged_topics}\nSummary: {merged_summary}"
 
 def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_timeline=""):
     """
