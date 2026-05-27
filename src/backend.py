@@ -1177,6 +1177,41 @@ def check_voice_consistency(state: StoryState) -> dict:
         print(f"  [Voice Check Error] {e}")
         return {"voice_result": "PASS", "voice_notes": ""}
 
+def get_previous_part_content(profile_name: str, chapter_num: int, part_num: int) -> str:
+    """
+    Finds and returns the content of the previous part of a chapter.
+    Used for part-aware context injection — ensures continuations always
+    have the prior part as mandatory context regardless of Librarian results.
+    """
+    if not chapter_num or not part_num or int(part_num) <= 1:
+        return ""
+
+    prev_part = int(part_num) - 1
+    paths = db.get_paths(profile_name)
+    output_dir = paths['output']
+
+    # Match pattern: Ch{num}_Part_{prev_part}_*
+    pattern = os.path.join(output_dir, f"Ch{int(chapter_num):02d}_Part_{prev_part}_*.txt")
+    matches = glob.glob(pattern)
+
+    if not matches:
+        print(f"  [Part-Aware] No previous part found for Ch{chapter_num:02d} Part {prev_part}.")
+        return ""
+
+    # If multiple matches (shouldn't happen but be safe), take the most recent
+    matches.sort(key=os.path.getmtime, reverse=True)
+    prev_file = matches[0]
+    filename = os.path.basename(prev_file)
+
+    try:
+        with open(prev_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        print(f"  [Part-Aware] Injecting previous part: {filename}")
+        return f"\n=== MANDATORY CONTEXT (PREVIOUS PART — DIRECT CONTINUATION) ===\n{content}\n"
+    except Exception as e:
+        print(f"  [Part-Aware] Failed to read previous part: {e}")
+        return ""
+
 def generate_scene(
     profile: str, 
     chapter_num: Optional[int], 
@@ -1251,6 +1286,14 @@ def generate_scene(
     else: 
         frags = db.get_fragments(profile, "Lore")
         context_str = f"=== BACKGROUND LORE ===\n{frags[0][2]}" if frags else "NO LORE ESTABLISHED."
+
+    # 2b. Part-Aware Context Injection
+    # If this is a continuation (Part > 1), force-inject the previous part
+    # as mandatory context before anything else — overrides Librarian results
+    prev_part_context = get_previous_part_content(profile, chapter_num, part)
+    if prev_part_context:
+        context_str = prev_part_context + context_str
+        print(f"  [Part-Aware] Previous part prepended to context.")
 
     settings = db.get_story_settings(profile)
     
