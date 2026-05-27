@@ -527,22 +527,29 @@ export default function SceneCreator({ profile }) {
                     />
                   </div>
                   
-                  {useParts ? (
-                    <div style={{ width: '60px', position: 'relative' }}>
-                      <label style={styles.label}>Part</label>
-                      <input 
-                        type="number" 
-                        min="1"
-                        value={part} 
-                        onChange={e => setPart(e.target.value)} 
-                        style={{...styles.input, borderColor: '#3b82f6', color: '#60a5fa'}} 
-                      />
-                      <div 
-                        onClick={() => setUseParts(false)}
-                        style={{position:'absolute', top:'-5px', right:'-5px', background:'#333', borderRadius:'50%', cursor:'pointer', padding:'2px'}}
-                      >
-                        <X size={10} />
+                    {useParts ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ width: '60px', position: 'relative' }}>
+                        <label style={styles.label}>Part</label>
+                        <input 
+                          type="number" 
+                          min="1"
+                          value={part} 
+                          onChange={e => setPart(e.target.value)} 
+                          style={{...styles.input, borderColor: '#3b82f6', color: '#60a5fa'}} 
+                        />
+                        <div 
+                          onClick={() => setUseParts(false)}
+                          style={{position:'absolute', top:'-5px', right:'-5px', background:'#333', borderRadius:'50%', cursor:'pointer', padding:'2px'}}
+                        >
+                          <X size={10} />
+                        </div>
                       </div>
+                      {parseInt(part) > 1 && (
+                        <div style={{ fontSize: '11px', color: '#60a5fa', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '4px', padding: '4px 8px', whiteSpace: 'nowrap' }}>
+                          Ch{String(chapter).padStart(2,'0')} Part {parseInt(part) - 1} will be auto-loaded
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'flex-end' }}>
