@@ -457,13 +457,6 @@ export default function SharedEditor({ profile, category, icon, color, descripti
           </div>
         </div>
 
-        <textarea 
-          value={editContent} 
-          onChange={e => setEditContent(e.target.value)}
-          placeholder={placeholder || "Start writing or import a file..."}
-          style={styles.textArea}
-        />
-
         {/* --- METADATA PANEL --- */}
         {selectedId && (
           <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a' }}>
@@ -471,7 +464,7 @@ export default function SharedEditor({ profile, category, icon, color, descripti
               onClick={() => setShowMeta(!showMeta)}
               style={{ padding: '10px 25px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
             >
-              <span style={{ fontSize: '11px', color: '#444', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <span style={{ fontSize: '15px', color: '#71717a', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Librarian Metadata
               </span>
               <span style={{ fontSize: '11px', color: '#444' }}>{showMeta ? '▲' : '▼'}</span>
@@ -489,8 +482,8 @@ export default function SharedEditor({ profile, category, icon, color, descripti
                   style={{
                     width: '100%', background: '#111', border: '1px solid #27272a',
                     color: '#a1a1aa', padding: '12px', borderRadius: '6px',
-                    fontSize: '12px', fontFamily: 'monospace', lineHeight: '1.6',
-                    resize: 'vertical', minHeight: '120px', outline: 'none',
+                    fontSize: '15px', fontFamily: 'monospace', lineHeight: '1.6',
+                    resize: 'vertical', minHeight: '300px', outline: 'none',
                     boxSizing: 'border-box'
                   }}
                 />
@@ -511,6 +504,13 @@ export default function SharedEditor({ profile, category, icon, color, descripti
             )}
           </div>
         )}
+
+        <textarea 
+          value={editContent} 
+          onChange={e => setEditContent(e.target.value)}
+          placeholder={placeholder || "Start writing or import a file..."}
+          style={styles.textArea}
+        />
       </div>
     </div>
   );

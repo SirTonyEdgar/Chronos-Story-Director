@@ -364,7 +364,8 @@ def list_knowledge_fragments(profile: str, category: str):
             "name": f[1], 
             "content": f[2], 
             "timeline": f[5] if len(f) > 5 and f[5] else "",
-            "metadata": f[4] if len(f) > 4 and f[4] else ""
+            "metadata": f[4] if len(f) > 4 and f[4] else "",
+            "reveal_date": f[6] if len(f) > 6 and f[6] else ""
         } 
         for f in fragments
     ]

@@ -7,6 +7,7 @@ The "Brain" of the operation.
 - Delegates persistence/storage to 'database_manager.py'.
 """
 
+import sqlite3
 import os
 import re
 import json
@@ -320,7 +321,7 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
     TASK: Generate searchable metadata for the text below.
     
     INSTRUCTION: Read the text and extract the following, in this exact order:
-    1. All proper nouns — character names, organization names, location names, unique item names.
+    1. The 15-20 most important proper nouns — prioritize character names, key organizations, and unique locations that someone would use in a search query. Do not list every name mentioned.
     2. The time period covered — a year, year range, or named era.
     3. 3-7 keyword topics describing the key themes, events, and concepts.
     4. A 2-3 sentence summary of what this document establishes.
@@ -385,7 +386,7 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
 
     merged_entities = _merge_lists(entities_1, entities_2)
     merged_topics = _merge_lists(topics_1, topics_2)
-    merged_summary = f"{summary_1} {summary_2}".strip()
+    merged_summary = " | ".join(filter(None, [summary_1.strip(), summary_2.strip()]))
 
     return f"Entities: {merged_entities}\nPeriod: {period}\nTopics: {merged_topics}\nSummary: {merged_summary}"
 
@@ -2197,22 +2198,6 @@ def extract_text_from_upload(filename: str, content_bytes: bytes) -> Optional[st
 def get_fragments(profile_name: str, doc_type: Optional[str] = None):
     """Queries memory fragments."""
     return db.get_fragments(profile_name, doc_type)
-
-def add_fragment(profile_name, filename, content, doc_type, timeline=""):
-    """Persists a new document to DB and File System."""
-    db.add_fragment(profile_name, filename, content, doc_type, timeline)
-
-def update_fragment(profile_name, frag_id, new_content, timeline=""):
-    """Updates content in DB and rewrites the file."""
-    db.update_fragment(profile_name, frag_id, new_content, timeline)
-
-def rename_fragment(profile_name, frag_id, new_filename):
-    """Updates the display label and renames the physical file."""
-    db.rename_fragment(profile_name, frag_id, new_filename)
-
-def delete_fragment(profile_name, frag_id):
-    """Removes from DB and deletes the physical file."""
-    db.delete_fragment(profile_name, frag_id)
 
 # ==========================================
 # 8. WORLD STATE TRACKER MODULE
