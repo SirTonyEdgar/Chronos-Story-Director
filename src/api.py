@@ -532,6 +532,20 @@ def get_scene_generation_log(profile: str, filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/scene/diff/{profile}/{filename}")
+def get_scene_diff(profile: str, filename: str):
+    """Returns current content and original draft for diff comparison."""
+    try:
+        current = engine.read_file_content(profile, filename)
+        original = engine.get_scene_original_draft(profile, filename)
+        return {
+            "current": current,
+            "original": original,
+            "has_diff": original is not None and original != current
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/state/analyze/{profile}")
 def analyze_state_changes(profile: str, payload: AnalysisRequest):
     """

@@ -114,6 +114,7 @@ def delete_fragment(p, i):
     invalidate_retrieval_cache(p)
     return result
 def rename_fragment(p, i, n): return db.rename_fragment(p, i, n)
+def get_scene_original_draft(profile, filename): return db.get_scene_original_draft(profile, filename)
 def get_chat_history(p): return db.get_chat_history(p)
 def save_chat_message(p, r, c): return db.save_chat_message(p, r, c)
 def clear_chat_history(p): return db.clear_chat_history(p)

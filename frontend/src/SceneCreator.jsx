@@ -199,6 +199,47 @@ const DryRunModal = ({ result, onClose, onProceed, onOutlineChange }) => {
 };
 
 /**
+ * Simple line-by-line diff using longest common subsequence.
+ * Returns array of {type: 'added'|'removed'|'unchanged', text: string}
+ */
+function computeLineDiff(original, current) {
+  const oldLines = original.split('\n');
+  const newLines = current.split('\n');
+  
+  // Build LCS table
+  const m = oldLines.length;
+  const n = newLines.length;
+  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (oldLines[i-1] === newLines[j-1]) {
+        dp[i][j] = dp[i-1][j-1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+      }
+    }
+  }
+  
+  // Backtrack to build diff
+  const result = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i-1] === newLines[j-1]) {
+      result.unshift({ type: 'unchanged', text: oldLines[i-1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+      result.unshift({ type: 'added', text: newLines[j-1] });
+      j--;
+    } else {
+      result.unshift({ type: 'removed', text: oldLines[i-1] });
+      i--;
+    }
+  }
+  return result;
+}
+
+/**
  * Scene Creator Module
  */
 export default function SceneCreator({ profile }) { 
@@ -245,6 +286,11 @@ export default function SceneCreator({ profile }) {
   const [generationLog, setGenerationLog] = useState(null);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
   const [showLog, setShowLog] = useState(false);
+
+// --- DIFF STATE ---
+  const [showDiff, setShowDiff] = useState(false);
+  const [diffData, setDiffData] = useState(null);
+  const [isLoadingDiff, setIsLoadingDiff] = useState(false);
 
   // --- DRY RUN STATE ---
   const [isDryRunning, setIsDryRunning] = useState(false);
@@ -399,10 +445,13 @@ export default function SceneCreator({ profile }) {
   const handleReadFile = async (filename) => {
     setSelectedFile(filename);
     setGenerationLog(null);
+    setDiffData(null);
+    setShowDiff(false);
     try {
       const res = await axios.get(`${API_URL}/file/${profile}/${filename}`);
       setFileContent(res.data.content);
       fetchGenerationLog(filename);
+      fetchDiff(filename);
     } catch (err) { toast("Failed to load file content.", "error"); }
   };
 
@@ -455,6 +504,20 @@ export default function SceneCreator({ profile }) {
       setSelectedManageFiles([]);
     } catch (err) {
       toast("Delete failed: " + (err.response?.data?.detail || err.message), "error");
+    }
+  };
+
+  const fetchDiff = async (filename) => {
+    if (!filename) return;
+    setIsLoadingDiff(true);
+    try {
+      const res = await axios.get(`${API_URL}/scene/diff/${profile}/${encodeURIComponent(filename)}`);
+      setDiffData(res.data);
+    } catch (err) {
+      console.error("Failed to fetch diff:", err);
+      setDiffData(null);
+    } finally {
+      setIsLoadingDiff(false);
     }
   };
 
@@ -874,6 +937,53 @@ export default function SceneCreator({ profile }) {
             {/* EDIT TAB */}
             {activeTab === "edit" && fileContent && (
               <>
+                {/* Diff Toggle Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: '#52525b' }}>
+                    {diffData?.has_diff 
+                      ? 'This scene has been edited from the original AI draft.' 
+                      : diffData?.original 
+                        ? 'No changes from original AI draft.' 
+                        : 'No original draft stored for this scene.'}
+                  </span>
+                  {diffData?.has_diff && (
+                    <button
+                      onClick={() => setShowDiff(!showDiff)}
+                      style={{
+                        padding: '6px 14px', background: showDiff ? '#27272a' : 'transparent',
+                        border: '1px solid #3f3f46', color: showDiff ? '#fff' : '#a1a1aa',
+                        borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600'
+                      }}
+                    >
+                      {showDiff ? 'Hide Diff' : 'Show Diff'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Diff View */}
+                {showDiff && diffData?.original && (
+                  <div style={{ background: '#09090b', border: '1px solid #27272a', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 16px', background: '#18181b', borderBottom: '1px solid #27272a', fontSize: '12px', color: '#71717a', display: 'flex', gap: '20px' }}>
+                      <span style={{ color: '#f87171' }}>■ Removed</span>
+                      <span style={{ color: '#22c55e' }}>■ Added</span>
+                      <span style={{ color: '#71717a' }}>■ Unchanged</span>
+                    </div>
+                    <div style={{ padding: '20px', fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.8', maxHeight: '500px', overflowY: 'auto' }}>
+                      {computeLineDiff(diffData.original, diffData.current).map((line, i) => (
+                        <div key={i} style={{
+                          background: line.type === 'added' ? 'rgba(34,197,94,0.1)' : line.type === 'removed' ? 'rgba(239,68,68,0.1)' : 'transparent',
+                          color: line.type === 'added' ? '#22c55e' : line.type === 'removed' ? '#f87171' : '#a1a1aa',
+                          padding: '1px 8px',
+                          borderLeft: `3px solid ${line.type === 'added' ? '#22c55e' : line.type === 'removed' ? '#ef4444' : 'transparent'}`
+                        }}>
+                          {line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : '  '}
+                          {line.text}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <textarea 
                   value={fileContent} 
                   onChange={e => setFileContent(e.target.value)} 

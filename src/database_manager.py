@@ -129,7 +129,8 @@ def init_db(profile_name: str):
         year INTEGER DEFAULT NULL,
         metadata TEXT DEFAULT '',
         timeline TEXT DEFAULT '',
-        reveal_date TEXT DEFAULT ''
+        reveal_date TEXT DEFAULT '',
+        original_draft TEXT DEFAULT ''
     )''')
     
     # Add metadata column to older databases
@@ -146,6 +147,11 @@ def init_db(profile_name: str):
 
     try:
         c.execute("ALTER TABLE memory_fragments ADD COLUMN reveal_date TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        c.execute("ALTER TABLE memory_fragments ADD COLUMN original_draft TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
 
@@ -426,6 +432,7 @@ def rename_fragment(profile_name, frag_id, new_filename):
 def upsert_scene(profile_name: str, filename: str, content: str, metadata: str = ""):
     """
     Inserts or Updates a Scene entry in the database, including its AI summary metadata.
+    On first insert, stores the original AI draft in original_draft — never overwritten.
     """
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30)
@@ -435,14 +442,37 @@ def upsert_scene(profile_name: str, filename: str, content: str, metadata: str =
     row = c.fetchone()
     
     if row:
-        # UPDATE existing scene
+        # UPDATE existing scene — never touch original_draft
         c.execute("UPDATE memory_fragments SET content = ?, metadata = ? WHERE id = ?", (content, metadata, row[0]))
     else:
-        # INSERT new scene
-        c.execute("INSERT INTO memory_fragments (source_filename, content, type, metadata) VALUES (?, ?, 'Scene', ?)", (filename, content, metadata))
+        # INSERT new scene — store original draft
+        c.execute(
+            "INSERT INTO memory_fragments (source_filename, content, type, metadata, original_draft) VALUES (?, ?, 'Scene', ?, ?)",
+            (filename, content, metadata, content)
+        )
         
     conn.commit()
     conn.close()
+
+def get_scene_original_draft(profile_name: str, filename: str) -> Optional[str]:
+    """Returns the original AI-generated draft for a scene, if stored."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        c.execute(
+            "SELECT original_draft FROM memory_fragments WHERE source_filename = ? AND type = 'Scene'",
+            (filename,)
+        )
+        row = c.fetchone()
+        if row and row[0]:
+            return row[0]
+        return None
+    except Exception as e:
+        print(f"Original draft fetch error: {e}")
+        return None
+    finally:
+        conn.close()
 
 def archive_scene_db(profile_name: str, filename: str):
     """
