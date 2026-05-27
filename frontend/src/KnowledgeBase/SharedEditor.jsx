@@ -109,6 +109,7 @@ export default function SharedEditor({ profile, category, icon, color, descripti
   const [editMetadata, setEditMetadata] = useState("");
   const [isSavingMeta, setIsSavingMeta] = useState(false);
   const [showMeta, setShowMeta] = useState(false);
+  const [autoSplit, setAutoSplit] = useState(false);
 
   // Refs
   const fileInputRef = useRef(null);
@@ -206,6 +207,29 @@ export default function SharedEditor({ profile, category, icon, color, descripti
     }
   };
 
+  const handleSplitImport = async (file) => {
+    const fname = file.name.toLowerCase();
+    const needsBackend = fname.endsWith(".pdf") || fname.endsWith(".docx") || 
+                         fname.endsWith(".txt") || fname.endsWith(".md");
+    if (!needsBackend) return toast("Unsupported file type.", "warning");
+
+    toast(`Splitting and importing ${file.name}...`, "info");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await axios.post(
+        `${API_URL}/knowledge/import_and_split/${profile}?category=${category}&timeline=${editTimeline}&threshold=16000`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      const count = res.data.sections;
+      toast(`Imported and split into ${count} section${count !== 1 ? 's' : ''}. Refresh to see them.`, "success");
+      await fetchItems();
+    } catch (err) {
+      toast("Split import failed: " + (err.response?.data?.detail || err.message), "error");
+    }
+  };
+
   const handleDelete = async () => {
     if (!selectedId) return;
     const ok = await confirm("Are you sure?", { title: "Delete Entry", confirmLabel: "Delete", danger: true });
@@ -236,6 +260,12 @@ export default function SharedEditor({ profile, category, icon, color, descripti
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
       if (!file) return;
+
+      if (autoSplit) {
+        await handleSplitImport(file);
+        e.target.value = null;
+        return;
+      }
 
       const fname = file.name.toLowerCase();
       const isText = fname.endsWith(".txt") || fname.endsWith(".md") || fname.endsWith(".json");
@@ -311,6 +341,26 @@ export default function SharedEditor({ profile, category, icon, color, descripti
             <button onClick={triggerFileUpload} style={{ ...styles.createBtn, flex: 1 }} title="Import Text File">
               <Upload size={14} /> Import
             </button>
+          </div>
+          <div
+            onClick={() => setAutoSplit(!autoSplit)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '6px 10px', borderRadius: '6px', cursor: 'pointer',
+              background: autoSplit ? 'rgba(168,85,247,0.1)' : 'transparent',
+              border: autoSplit ? '1px solid #a855f7' : '1px solid #333',
+              fontSize: '11px', color: autoSplit ? '#a855f7' : '#666',
+              transition: 'all 0.2s'
+            }}
+            title="When enabled, large imported files are automatically split into focused sub-documents"
+          >
+            <div style={{
+              width: '10px', height: '10px', borderRadius: '50%',
+              background: autoSplit ? '#a855f7' : '#333',
+              border: '1px solid ' + (autoSplit ? '#a855f7' : '#555'),
+              transition: 'all 0.2s', flexShrink: 0
+            }} />
+            Auto-Split on Import
           </div>
         </div>
 

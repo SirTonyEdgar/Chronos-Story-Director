@@ -1562,6 +1562,75 @@ def dry_run_scene(
         "upcoming_spoiler_warnings": check_upcoming_spoilers(profile, final_year, final_date),
     }
 
+def split_document_for_ingestion(profile_name: str, content: str, source_name: str,
+                                  doc_type: str, timeline: str = "",
+                                  threshold: int = 16000) -> List[dict]:
+    """
+    Splits a large document into focused sub-documents using AI-identified section boundaries.
+    Each chunk gets its own metadata. Returns a list of dicts ready for fragment insertion.
+    Only splits if content exceeds threshold characters.
+    """
+    if len(content) <= threshold:
+        # Document is small enough — return as single fragment
+        metadata = generate_file_metadata(profile_name, content)
+        return [{"name": source_name, "content": content, "metadata": metadata}]
+
+    print(f"  [Splitter] Document '{source_name}' is {len(content)} chars — splitting...")
+
+    # Ask AI to identify natural section boundaries
+    split_prompt = f"""
+    TASK: Identify natural section boundaries in this document for splitting into focused sub-documents.
+
+    DOCUMENT NAME: {source_name}
+    DOCUMENT LENGTH: {len(content)} characters
+
+    FIRST 8000 CHARACTERS:
+    {content[:8000]}
+
+    MIDDLE SAMPLE (chars 8000-16000):
+    {content[8000:16000]}
+
+    INSTRUCTIONS:
+    1. Identify 2-5 natural split points where the document shifts to a new major topic.
+    2. Each section should be self-contained and cover one coherent subject.
+    3. Return character positions (approximate) where splits should occur.
+    4. Give each section a short descriptive name.
+
+    OUTPUT FORMAT: JSON array only.
+    Example: [{{"name": "Personnel & Command Structure", "start": 0, "end": 8500}}, {{"name": "Operations 2016-2018", "start": 8500, "end": 18000}}]
+    """
+
+    llm = get_llm(profile_name, "librarian")
+    sections = []
+
+    try:
+        res = llm.invoke([HumanMessage(content=split_prompt)]).content
+        proposed_sections = _extract_json(res)
+
+        if isinstance(proposed_sections, list) and len(proposed_sections) > 1:
+            for s in proposed_sections:
+                start = max(0, int(s.get("start", 0)))
+                end = min(len(content), int(s.get("end", len(content))))
+                chunk = content[start:end].strip()
+                if len(chunk) < 100:
+                    continue
+                section_name = f"{source_name} — {s.get('name', 'Section')}"
+                metadata = generate_file_metadata(profile_name, chunk)
+                sections.append({
+                    "name": section_name,
+                    "content": chunk,
+                    "metadata": metadata
+                })
+            if sections:
+                print(f"  [Splitter] Split into {len(sections)} sections.")
+                return sections
+    except Exception as e:
+        print(f"  [Splitter] AI split failed: {e}. Falling back to single fragment.")
+
+    # Fallback: return as single fragment if splitting fails
+    metadata = generate_file_metadata(profile_name, content)
+    return [{"name": source_name, "content": content, "metadata": metadata}]
+
 def bulk_regenerate_metadata(profile_name: str) -> dict:
     """
     Regenerates metadata for every fragment in the profile using the

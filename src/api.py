@@ -421,6 +421,53 @@ def delete_knowledge_entry(profile: str, req: DeleteRequest):
     engine.delete_fragment(profile, req.id)
     return {"status": "Deleted"}
 
+@app.post("/knowledge/import_and_split/{profile}")
+async def import_and_split_document(
+    profile: str,
+    category: str,
+    timeline: str = "",
+    threshold: int = 16000,
+    file: UploadFile = File(...)
+):
+    """
+    Imports a file, splits it into focused sub-documents if it exceeds the threshold,
+    and saves each chunk as a separate fragment with its own metadata.
+    """
+    try:
+        filename = file.filename
+        content_bytes = await file.read()
+        text = engine.extract_text_from_upload(filename, content_bytes)
+
+        if not text:
+            raise HTTPException(status_code=400, detail=f"Could not extract text from {filename}")
+
+        sections = engine.split_document_for_ingestion(
+            profile, text, filename, category, timeline, threshold
+        )
+
+        saved = []
+        for section in sections:
+            frag_id = engine.add_fragment(
+                profile,
+                section["name"],
+                section["content"],
+                category,
+                timeline
+            )
+            # Save the pre-generated metadata directly
+            engine.update_fragment_metadata(profile, frag_id, section["metadata"])
+            saved.append({"id": frag_id, "name": section["name"]})
+
+        return {
+            "status": "Imported",
+            "sections": len(saved),
+            "fragments": saved
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/knowledge/import_file/{profile}")
 async def import_knowledge_file(profile: str, file: UploadFile = File(...)):
     """
