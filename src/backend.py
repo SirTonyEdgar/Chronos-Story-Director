@@ -94,13 +94,25 @@ def read_file_content(p, f): return db.read_file_content(p, f)
 def get_world_state(p): return db.get_world_state(p)
 def save_world_state(p, s): return db.save_world_state(p, s)
 def get_fragments(p, c): return db.get_fragments(p, c)
-def add_fragment(p, n, c, t, tl="", reveal_date=""): return db.add_fragment(p, n, c, t, tl, reveal_date)
-def update_fragment(p, i, c, tl=""): return db.update_fragment(p, i, c, tl)
-def update_fragment_metadata(profile, frag_id, new_metadata): return db.update_fragment_metadata(profile, frag_id, new_metadata)
+def add_fragment(p, n, c, t, tl="", reveal_date=""):
+    result = db.add_fragment(p, n, c, t, tl, reveal_date)
+    invalidate_retrieval_cache(p)
+    return result
+def update_fragment(p, i, c, tl=""):
+    result = db.update_fragment(p, i, c, tl)
+    invalidate_retrieval_cache(p)
+    return result
+def update_fragment_metadata(profile, frag_id, new_metadata):
+    result = db.update_fragment_metadata(profile, frag_id, new_metadata)
+    invalidate_retrieval_cache(profile)
+    return result
 def update_fragment_reveal_date(profile, frag_id, reveal_date): return db.update_fragment_reveal_date(profile, frag_id, reveal_date)
 def get_all_fragments_for_remetadata(profile): return db.get_all_fragments_for_remetadata(profile)
 def keyword_search_fragments(profile, query, doc_types=None): return db.keyword_search_fragments(profile, query, doc_types)
-def delete_fragment(p, i): return db.delete_fragment(p, i)
+def delete_fragment(p, i):
+    result = db.delete_fragment(p, i)
+    invalidate_retrieval_cache(p)
+    return result
 def rename_fragment(p, i, n): return db.rename_fragment(p, i, n)
 def get_chat_history(p): return db.get_chat_history(p)
 def save_chat_message(p, r, c): return db.save_chat_message(p, r, c)
@@ -376,6 +388,26 @@ def generate_file_metadata(profile_name: str, content: str) -> str:
 
     return f"Entities: {merged_entities}\nPeriod: {period}\nTopics: {merged_topics}\nSummary: {merged_summary}"
 
+# --- RETRIEVAL CACHE ---
+# In-memory cache keyed by query hash. Expires after 30 minutes or on fragment add.
+import hashlib
+import time
+
+_retrieval_cache: dict = {}
+_CACHE_TTL_SECONDS = 1800  # 30 minutes
+
+def _get_cache_key(profile_name: str, user_query: str, doc_types: Optional[List[str]], timeline: str) -> str:
+    raw = f"{profile_name}|{user_query}|{sorted(doc_types or [])}|{timeline}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
+def invalidate_retrieval_cache(profile_name: str):
+    """Clears all cached retrieval results for a profile. Call when fragments are added or modified."""
+    keys_to_delete = [k for k in _retrieval_cache if k.startswith(profile_name + "|")]
+    for k in keys_to_delete:
+        del _retrieval_cache[k]
+    if keys_to_delete:
+        print(f"  [Cache] Invalidated {len(keys_to_delete)} cached queries for {profile_name}.")
+
 def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_timeline=""):
     """
     Scans the 'Table of Contents' (Titles + Metadata) and asks the AI 
@@ -383,8 +415,18 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     Selection cap scales with query length. Low-confidence results are filtered.
     """
     rows = db.get_fragments(profile_name, doc_type=None)
-    
     if not rows: return []
+
+    # Check cache first
+    cache_key = f"{profile_name}|{_get_cache_key(profile_name, user_query, doc_types, current_timeline)}"
+    cached = _retrieval_cache.get(cache_key)
+    if cached:
+        entry_time, cached_ids = cached
+        if time.time() - entry_time < _CACHE_TTL_SECONDS:
+            print(f"  [Librarian] Cache hit — returning {len(cached_ids)} cached fragments.")
+            return cached_ids
+        else:
+            del _retrieval_cache[cache_key]
 
     if current_timeline:
         rows = _filter_rows_by_timeline(rows, current_timeline)
@@ -463,7 +505,9 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
                 if score >= 6:
                     ids.append(item["id"])
 
-        print(f"  [Librarian] Retrieved {len(ids)} fragments (cap: {max_items}, threshold: 6)")
+        # Store in cache
+        _retrieval_cache[cache_key] = (time.time(), ids)
+        print(f"  [Librarian] Retrieved {len(ids)} fragments (cap: {max_items}, threshold: 6) — cached.")
         return ids
 
     except Exception as e:
