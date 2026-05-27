@@ -8,6 +8,8 @@ export default function SpoilersTab({ profile }) {
   const [spoilers, setSpoilers] = useState([]);
   const [newBan, setNewBan] = useState("");
   const [newRevealDate, setNewRevealDate] = useState("");
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditResults, setAuditResults] = useState(null);
 
   // Reload when profile changes
   useEffect(() => { 
@@ -43,19 +45,80 @@ export default function SpoilersTab({ profile }) {
     } catch (err) { toast("Failed to delete.", "error"); }
   };
 
+  const handleAudit = async () => {
+    setIsAuditing(true);
+    setAuditResults(null);
+    try {
+      const res = await axios.post(`${API_URL}/scene/audit_spoilers/${profile}`);
+      setAuditResults(res.data);
+      if (res.data.total_flagged === 0) {
+        toast("Audit complete. No spoiler leaks detected.", "success");
+      } else {
+        toast(`Audit complete. ${res.data.total_flagged} scene${res.data.total_flagged > 1 ? 's' : ''} flagged.`, "warning");
+      }
+    } catch (err) {
+      toast("Audit failed: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
   return (
     <div style={{ padding: '20px', color: '#eee', maxWidth: '800px', margin: '0 auto' }}>
       
       {/* HEADER */}
-      <div style={{ background: '#450a0a', border: '1px solid #991b1b', padding: '20px', borderRadius: '8px', display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '30px' }}>
-        <EyeOff size={32} color="#f87171" />
-        <div>
-          <h3 style={{ margin: 0, color: '#fca5a5', fontSize: '18px' }}>Banned Content (The Anti-Prompt)</h3>
-          <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#fecaca', lineHeight: '1.5' }}>
-            Concepts, twists, or names the AI is explicitly <b>FORBIDDEN</b> from mentioning until you decide it's time.
-          </p>
+      <div style={{ background: '#450a0a', border: '1px solid #991b1b', padding: '20px', borderRadius: '8px', display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '30px', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+          <EyeOff size={32} color="#f87171" />
+          <div>
+            <h3 style={{ margin: 0, color: '#fca5a5', fontSize: '18px' }}>Banned Content (The Anti-Prompt)</h3>
+            <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: '#fecaca', lineHeight: '1.5' }}>
+              Concepts, twists, or names the AI is explicitly <b>FORBIDDEN</b> from mentioning until you decide it's time.
+            </p>
+          </div>
         </div>
+        <button
+          onClick={handleAudit}
+          disabled={isAuditing || spoilers.length === 0}
+          style={{
+            padding: '8px 16px', background: 'transparent',
+            border: '1px solid #991b1b', color: '#f87171',
+            borderRadius: '6px', cursor: isAuditing || spoilers.length === 0 ? 'default' : 'pointer',
+            fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap',
+            opacity: spoilers.length === 0 ? 0.4 : 1
+          }}
+        >
+          {isAuditing ? 'Scanning Scenes...' : '🔍 Audit Scenes'}
+        </button>
       </div>
+
+      {/* AUDIT RESULTS */}
+      {auditResults && (
+        <div style={{ marginBottom: '30px', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', background: '#111' }}>
+          <div style={{ padding: '12px 16px', background: '#1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', fontWeight: '700', color: auditResults.total_flagged > 0 ? '#f87171' : '#22c55e' }}>
+              {auditResults.total_flagged > 0
+                ? `⚠️ ${auditResults.total_flagged} scene${auditResults.total_flagged > 1 ? 's' : ''} with potential spoiler leaks`
+                : '✓ All scenes clean — no spoiler leaks detected'}
+            </span>
+            <button onClick={() => setAuditResults(null)} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '16px' }}>×</button>
+          </div>
+          {auditResults.total_flagged > 0 && (
+            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {auditResults.flagged.map((f, i) => (
+                <div key={i} style={{ padding: '12px', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '6px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#f87171', marginBottom: '6px' }}>
+                    {f.filename}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#a1a1aa', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                    {f.violations}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* INPUT */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '30px' }}>

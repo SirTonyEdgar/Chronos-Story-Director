@@ -214,6 +214,19 @@ def check_scene_spoilers(profile: str, payload: SceneGenerationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/scene/audit_spoilers/{profile}")
+def audit_scene_spoilers(profile: str):
+    """
+    Scans all scene files for accidental spoiler leakage.
+    Returns a list of flagged scenes with violation details.
+    This is a slow operation — one LLM call per scene file.
+    """
+    try:
+        results = engine.audit_scenes_for_spoilers(profile)
+        return {"flagged": results, "total_flagged": len(results)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/scene/generate/{profile}")
 def generate_new_scene(profile: str, payload: SceneGenerationRequest):
     """Triggers the AI to write a new scene based on the brief and context."""

@@ -642,6 +642,75 @@ def check_upcoming_spoilers(profile_name: str, scene_year: int, scene_date: str)
 
     return warnings
 
+def audit_scenes_for_spoilers(profile_name: str) -> List[dict]:
+    """
+    Scans all existing scene files for accidental spoiler leakage.
+    Checks each scene against the active spoiler list and flags violations.
+    Returns a list of flagged scenes with details.
+    """
+    # Get all spoilers
+    s_rows = db.get_fragments(profile_name, "Spoiler")
+    if not s_rows:
+        return []
+
+    spoiler_contents = [r[2] for r in s_rows if r[2]]
+    if not spoiler_contents:
+        return []
+
+    # Get all scene files
+    all_files = db.get_all_files_list(profile_name)
+    if not all_files:
+        return []
+
+    spoiler_list_str = "\n".join(f"- {s}" for s in spoiler_contents)
+    flags = []
+
+    for filename in all_files:
+        content = db.read_file_content(profile_name, filename)
+        if not content or len(content.strip()) < 50:
+            continue
+
+        prompt = f"""
+        ROLE: Continuity Auditor.
+        TASK: Check if this scene accidentally reveals or references any of the listed spoilers.
+
+        *** SPOILERS TO PROTECT (must not appear in scenes yet) ***
+        {spoiler_list_str}
+
+        *** SCENE TO CHECK ***
+        Filename: {filename}
+        Content: {content[:4000]}
+
+        *** INSTRUCTIONS ***
+        Read the scene carefully. Check if it directly mentions, hints at, or reveals any of the spoilers above.
+        Minor thematic similarity is NOT a violation. Only flag if the scene actually reveals protected information.
+
+        If no spoilers are leaked, output exactly: CLEAN
+        If spoilers are leaked, output: LEAKED, then list each violation on a new line.
+        Format: LEAKED\n- [spoiler content]: [brief description of how it was leaked in this scene]
+        """
+
+        try:
+            llm = get_llm(profile_name, "validator")
+            res = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+
+            if res.startswith("CLEAN"):
+                continue
+
+            if res.startswith("LEAKED"):
+                violations = res.replace("LEAKED", "").strip()
+                flags.append({
+                    "filename": filename,
+                    "violations": violations
+                })
+                print(f"  [Audit] Spoiler leak detected in: {filename}")
+
+        except Exception as e:
+            print(f"  [Audit] Error checking {filename}: {e}")
+            continue
+
+    return flags
+
 def get_global_context(profile_name: str, current_timeline: str = "", scene_year: int = 0, scene_date: str = ""):
     """
     Retrieves the 'Immutable' context layers that must be present in every generation cycle.
