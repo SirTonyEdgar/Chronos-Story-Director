@@ -337,6 +337,9 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     
     if not rows: return []
 
+    if current_timeline:
+        rows = _filter_rows_by_timeline(rows, current_timeline)
+
     # Format the "Menu" for the AI
     toc_list = []
     for r in rows:
@@ -363,11 +366,7 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     # --- MULTIVERSE FILTERING INSTRUCTION ---
     timeline_instruction = ""
     if current_timeline:
-        timeline_instruction = f"""
-        CRITICAL MULTIVERSE RULE: The current scene takes place in the timeline: [{current_timeline}].
-        - If a document's Title or Metadata explicitly mentions a different timeline/universe, DO NOT select it unless the user query explicitly asks for a crossover.
-        - Documents that do not specify a timeline can be assumed to be 'Universal Lore' and may be selected if relevant.
-        """
+        timeline_instruction = f"\nNOTE: This scene is set in [{current_timeline}]. The document list above has already been pre-filtered to this timeline and universal documents only.\n"
 
     prompt = f"""
     ROLE: Database Librarian.
