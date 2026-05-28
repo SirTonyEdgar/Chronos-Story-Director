@@ -713,6 +713,66 @@ def audit_scenes_for_spoilers(profile_name: str) -> List[dict]:
 
     return flags
 
+def analyze_world_consequences(profile_name: str, scene_content: str, filename: str) -> dict:
+    """
+    Analyzes a completed scene and identifies which defined factions and characters
+    would plausibly react or be affected. Returns flags for the user to act on.
+    Does not generate full reactions — purely advisory.
+    """
+    # Get defined factions and cast
+    world_state = db.get_world_state(profile_name)
+    cast = world_state.get("Cast", [])
+    char_names = [c.get("Name", "") for c in cast if c.get("Name")]
+
+    faction_rows = db.get_fragments(profile_name, "Faction")
+    faction_names = [r[1] for r in faction_rows if r[1]]
+
+    existing_factions = db.get_distinct_factions(profile_name)
+    all_factions = list(set(faction_names + (existing_factions or [])))
+
+    if not all_factions and not char_names:
+        return {"consequences": [], "message": "No defined factions or characters to analyze against."}
+
+    entities_str = ""
+    if all_factions:
+        entities_str += f"Known Factions: {', '.join(all_factions)}\n"
+    if char_names:
+        entities_str += f"Known Characters: {', '.join(char_names[:20])}\n"
+
+    prompt = f"""
+    ROLE: World Consequence Analyst.
+    TASK: Read this scene and identify which defined factions or characters would plausibly be affected, alerted, or motivated to respond.
+
+    *** DEFINED ENTITIES ***
+    {entities_str}
+
+    *** SCENE CONTENT ***
+    {scene_content[:4000]}
+
+    *** INSTRUCTIONS ***
+    For each entity that would plausibly react to the events in this scene:
+    1. Only flag entities that are DEFINED ABOVE — do not invent new factions or characters.
+    2. Describe in one sentence WHY they would react and WHAT their likely response direction would be.
+    3. Focus on meaningful consequences — not every entity reacts to every scene.
+    4. If nothing in this scene would trigger a meaningful response from any defined entity, say so.
+
+    OUTPUT FORMAT: JSON array only.
+    Example: [{{"entity": "The Praetorian Guard", "type": "Faction", "reason": "The assassination attempt directly targets their principal — they would mobilize immediately and review security protocols."}}, {{"entity": "Erik Prince", "type": "Character", "reason": "His contractor network was implicated — he would distance himself publicly while privately gathering intelligence."}}]
+    If no consequences, output: []
+    """
+
+    try:
+        llm = get_llm(profile_name, "validator")
+        res = llm.invoke([HumanMessage(content=prompt)]).content
+        consequences = _extract_json(res)
+        if isinstance(consequences, list):
+            print(f"  [World Consequences] {len(consequences)} consequence(s) flagged for {filename}")
+            return {"consequences": consequences}
+        return {"consequences": []}
+    except Exception as e:
+        print(f"  [World Consequences Error] {e}")
+        return {"consequences": []}
+
 def get_global_context(profile_name: str, current_timeline: str = "", scene_year: int = 0, scene_date: str = ""):
     """
     Retrieves the 'Immutable' context layers that must be present in every generation cycle.

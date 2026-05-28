@@ -214,6 +214,23 @@ def check_scene_spoilers(profile: str, payload: SceneGenerationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/scene/consequences/{profile}/{filename}")
+def get_scene_consequences(profile: str, filename: str):
+    """
+    Analyzes a scene for world consequences — which factions and characters
+    would plausibly react. Advisory only, does not generate reactions.
+    """
+    try:
+        content = engine.read_file_content(profile, filename)
+        if not content:
+            raise HTTPException(status_code=404, detail="Scene not found.")
+        result = engine.analyze_world_consequences(profile, content, filename)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/scene/audit_spoilers/{profile}")
 def audit_scene_spoilers(profile: str):
     """

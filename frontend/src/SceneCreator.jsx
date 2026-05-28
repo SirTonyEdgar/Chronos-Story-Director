@@ -287,6 +287,11 @@ export default function SceneCreator({ profile }) {
   const [isLoadingLog, setIsLoadingLog] = useState(false);
   const [showLog, setShowLog] = useState(false);
 
+// --- WORLD CONSEQUENCES STATE ---
+  const [consequences, setConsequences] = useState(null);
+  const [isAnalyzingConsequences, setIsAnalyzingConsequences] = useState(false);
+  const [showConsequences, setShowConsequences] = useState(false);
+
 // --- DIFF STATE ---
   const [showDiff, setShowDiff] = useState(false);
   const [diffData, setDiffData] = useState(null);
@@ -451,6 +456,8 @@ export default function SceneCreator({ profile }) {
       const res = await axios.get(`${API_URL}/file/${profile}/${filename}`);
       setFileContent(res.data.content);
       fetchGenerationLog(filename);
+      setConsequences(null);
+      setShowConsequences(false);
       fetchDiff(filename);
     } catch (err) { toast("Failed to load file content.", "error"); }
   };
@@ -504,6 +511,24 @@ export default function SceneCreator({ profile }) {
       setSelectedManageFiles([]);
     } catch (err) {
       toast("Delete failed: " + (err.response?.data?.detail || err.message), "error");
+    }
+  };
+
+  const fetchConsequences = async (filename) => {
+    if (!filename) return;
+    setIsAnalyzingConsequences(true);
+    setConsequences(null);
+    try {
+      const res = await axios.post(
+        `${API_URL}/scene/consequences/${profile}/${encodeURIComponent(filename)}`
+      );
+      setConsequences(res.data.consequences || []);
+      setShowConsequences(true);
+    } catch (err) {
+      console.error("Consequences analysis failed:", err);
+      setConsequences([]);
+    } finally {
+      setIsAnalyzingConsequences(false);
     }
   };
 
@@ -925,6 +950,59 @@ export default function SceneCreator({ profile }) {
                               </div>
                             )}
 
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* --- WORLD CONSEQUENCES PANEL --- */}
+                {selectedFile && (
+                  <div style={{ ...styles.logBox, borderColor: '#1e3a2f' }}>
+                    <div style={{ ...styles.logHeader, background: '#0f1f18' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#4ade80' }}>🌐 World Consequences</span>
+                        {consequences && consequences.length > 0 && !showConsequences && (
+                          <span style={{ fontSize: '11px', color: '#22c55e', background: 'rgba(34,197,94,0.1)', padding: '2px 8px', borderRadius: '10px' }}>
+                            {consequences.length} flagged
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (consequences === null) {
+                            fetchConsequences(selectedFile);
+                          } else {
+                            setShowConsequences(!showConsequences);
+                          }
+                        }}
+                        disabled={isAnalyzingConsequences}
+                        style={{ background: 'transparent', border: '1px solid #1e3a2f', color: '#4ade80', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
+                      >
+                        {isAnalyzingConsequences ? 'Analyzing...' : consequences === null ? 'Analyze' : showConsequences ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+
+                    {showConsequences && consequences !== null && (
+                      <div style={{ ...styles.logBody }}>
+                        {consequences.length === 0 ? (
+                          <div style={{ fontSize: '13px', color: '#52525b', fontStyle: 'italic' }}>
+                            No meaningful consequences detected for defined entities.
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {consequences.map((c, i) => (
+                              <div key={i} style={{ padding: '10px 14px', background: '#0f1f18', border: '1px solid #1e3a2f', borderRadius: '6px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#4ade80' }}>{c.entity}</span>
+                                  <span style={{ fontSize: '10px', color: '#166534', background: 'rgba(34,197,94,0.1)', padding: '2px 6px', borderRadius: '4px' }}>{c.type}</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#a1a1aa', lineHeight: '1.5' }}>{c.reason}</div>
+                              </div>
+                            ))}
+                            <div style={{ fontSize: '11px', color: '#374151', fontStyle: 'italic', marginTop: '4px' }}>
+                              Use the Reaction Tool to generate full responses from these entities.
+                            </div>
                           </div>
                         )}
                       </div>
