@@ -49,6 +49,7 @@ class SceneGenerationRequest(BaseModel):
     fog_of_war: bool = False
     timeline: str = ""
     override_outline: str = ""
+    pov_context: str = ""
 
 class SceneEditRequest(BaseModel):
     filename: str
@@ -253,7 +254,8 @@ def generate_new_scene(profile: str, payload: SceneGenerationRequest):
             payload.time_str, payload.title, payload.brief, 
             payload.context_files, use_fog_of_war=payload.fog_of_war,
             timeline=payload.timeline,
-            override_outline=payload.override_outline
+            override_outline=payload.override_outline,
+            pov_context=payload.pov_context
         )
         return {"status": "Success", "filename": os.path.basename(path), "content": text}
     except Exception as e:
@@ -382,7 +384,8 @@ def list_knowledge_fragments(profile: str, category: str):
             "content": f[2], 
             "timeline": f[5] if len(f) > 5 and f[5] else "",
             "metadata": f[4] if len(f) > 4 and f[4] else "",
-            "reveal_date": f[6] if len(f) > 6 and f[6] else ""
+            "reveal_date": f[6] if len(f) > 6 and f[6] else "",
+            "known_by": f[7] if len(f) > 7 and f[7] else ""
         } 
         for f in fragments
     ]
@@ -450,6 +453,16 @@ def update_fragment_reveal_date(profile: str, fragment_id: int, payload: dict):
     try:
         engine.update_fragment_reveal_date(profile, fragment_id, payload.get("reveal_date", ""))
         return {"status": "Reveal date updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge/known_by/{profile}/{fragment_id}")
+def update_fragment_known_by(profile: str, fragment_id: int, payload: dict):
+    """Saves the known_by field for a fragment."""
+    try:
+        engine.update_fragment_known_by(profile, fragment_id, payload.get("known_by", ""))
+        engine.invalidate_retrieval_cache(profile)
+        return {"status": "Known-by updated"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

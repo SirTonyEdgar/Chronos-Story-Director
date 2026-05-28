@@ -273,6 +273,7 @@ export default function SceneCreator({ profile }) {
   const [timeStr, setTimeStr] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [fogOfWar, setFogOfWar] = useState(false);
+  const [povContext, setPovContext] = useState("");
 
   // Editor State
   const [selectedFile, setSelectedFile] = useState("");
@@ -380,7 +381,8 @@ export default function SceneCreator({ profile }) {
     context_files: selectedContext,
     fog_of_war: fogOfWar,
     timeline: timeline,
-    override_outline: overrideOutline
+    override_outline: overrideOutline,
+    pov_context: povContext,
   });
 
   // --- ACTIONS ---
@@ -767,6 +769,21 @@ export default function SceneCreator({ profile }) {
               <label htmlFor="fog" style={styles.checkboxLabel}>
                 Enable Fog of War (Private thoughts are tagged separately)
               </label>
+            </div>
+
+            {/* POV Context */}
+            <div>
+              <label style={styles.label}>POV Context (Access Level)</label>
+              <input
+                type="text"
+                value={povContext}
+                onChange={e => setPovContext(e.target.value)}
+                placeholder="Who is the POV character/faction? e.g. Tony Edgar, Praetorian Guard (leave blank for protagonist)"
+                style={styles.input}
+              />
+              <div style={{ fontSize: '11px', color: '#52525b', marginTop: '4px' }}>
+                Controls which restricted documents the Librarian can access for this scene.
+              </div>
             </div>
 
             {/* Spoiler Proximity Warnings */}

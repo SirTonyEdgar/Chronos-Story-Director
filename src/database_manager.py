@@ -130,6 +130,7 @@ def init_db(profile_name: str):
         metadata TEXT DEFAULT '',
         timeline TEXT DEFAULT '',
         reveal_date TEXT DEFAULT '',
+        known_by TEXT DEFAULT '',
         original_draft TEXT DEFAULT ''
     )''')
     
@@ -147,6 +148,11 @@ def init_db(profile_name: str):
 
     try:
         c.execute("ALTER TABLE memory_fragments ADD COLUMN reveal_date TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        c.execute("ALTER TABLE memory_fragments ADD COLUMN known_by TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
 
@@ -268,9 +274,9 @@ def get_fragments(profile_name: str, doc_type: Optional[str] = None):
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     if doc_type: 
-        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date FROM memory_fragments WHERE type = ? ORDER BY id DESC", (doc_type,))
+        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date, known_by FROM memory_fragments WHERE type = ? ORDER BY id DESC", (doc_type,))
     else: 
-        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date FROM memory_fragments ORDER BY id DESC")
+        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date, known_by FROM memory_fragments ORDER BY id DESC")
     rows = c.fetchall()
     conn.close()
     return rows
@@ -343,6 +349,15 @@ def update_fragment_reveal_date(profile_name: str, frag_id: int, reveal_date: st
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     c.execute("UPDATE memory_fragments SET reveal_date = ? WHERE id = ?", (reveal_date, frag_id))
+    conn.commit()
+    conn.close()
+
+def update_fragment_known_by(profile_name: str, frag_id: int, known_by: str):
+    """Updates the known_by field for a specific fragment."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE memory_fragments SET known_by = ? WHERE id = ?", (known_by, frag_id))
     conn.commit()
     conn.close()
 

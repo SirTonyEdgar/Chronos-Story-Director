@@ -83,6 +83,7 @@ class StoryState(TypedDict):
     _style_tokens: dict
     voice_notes: str
     voice_result: str
+    pov_context: str
 
 # ==========================================
 # 1. API PROXY LAYER (Bridge to DB Manager)
@@ -109,6 +110,7 @@ def update_fragment_metadata(profile, frag_id, new_metadata):
     return result
 def update_fragment_type(profile, frag_id, new_type): return db.update_fragment_type(profile, frag_id, new_type)
 def update_fragment_reveal_date(profile, frag_id, reveal_date): return db.update_fragment_reveal_date(profile, frag_id, reveal_date)
+def update_fragment_known_by(profile, frag_id, known_by): return db.update_fragment_known_by(profile, frag_id, known_by)
 def get_all_fragments_for_remetadata(profile): return db.get_all_fragments_for_remetadata(profile)
 def keyword_search_fragments(profile, query, doc_types=None): return db.keyword_search_fragments(profile, query, doc_types)
 def delete_fragment(p, i):
@@ -411,7 +413,7 @@ def invalidate_retrieval_cache(profile_name: str):
     if keys_to_delete:
         print(f"  [Cache] Invalidated {len(keys_to_delete)} cached queries for {profile_name}.")
 
-def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_timeline=""):
+def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_timeline="", pov_context=""):
     """
     Scans the 'Table of Contents' (Titles + Metadata) and asks the AI 
     which entries are relevant to the user's query and current timeline.
@@ -433,6 +435,10 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
 
     if current_timeline:
         rows = _filter_rows_by_timeline(rows, current_timeline)
+
+    # Known-by filter — exclude documents the POV entity doesn't have access to
+    if pov_context:
+        rows = _filter_rows_by_known_by(rows, pov_context)
 
     # Format the "Menu" for the AI
     toc_list = []
@@ -955,7 +961,8 @@ def plan_scene(state: StoryState) -> dict:
         profile, 
         user_query=brief, 
         doc_types=["Lore", "Fact", "Rulebook", "Scene"],
-        current_timeline=current_timeline
+        current_timeline=current_timeline,
+        pov_context=state.get('pov_context', '')
     )
     
     smart_context_str = db.get_content_by_ids(profile, relevant_ids)
@@ -1055,7 +1062,8 @@ def draft_scene(state: StoryState) -> dict:
         profile, 
         user_query=brief, 
         doc_types=["Lore", "Fact", "Rulebook", "Scene"],
-        current_timeline=current_timeline
+        current_timeline=current_timeline,
+        pov_context=state.get('pov_context', '')
     )
     
     smart_context_str = db.get_content_by_ids(profile, relevant_ids)
@@ -1449,7 +1457,8 @@ def generate_scene(
     use_fog_of_war: bool,
     part: int = 1,
     timeline: str = "",
-    override_outline: str = ""
+    override_outline: str = "",
+    pov_context: str = ""
 ) -> tuple[str, str]:
     """
     Entry point for the scene generation pipeline.
@@ -1575,6 +1584,7 @@ def generate_scene(
         "style_result": "",
         "voice_notes": "",
         "voice_result": "",
+        "pov_context": pov_context if pov_context else settings.get('protagonist', ''),
     }
     
     # 5. Execute AI Loop
@@ -1970,7 +1980,8 @@ def run_chat_query(profile_name, user_input, timeline=""):
         profile_name, 
         user_query=user_input, 
         doc_types=["Lore", "Fact", "Rulebook", "Scene"],
-        current_timeline=timeline
+        current_timeline=timeline,
+        pov_context=""
     )
     
     # Efficient Batch Fetch via DB
@@ -2059,7 +2070,8 @@ def run_war_room_simulation(profile, action_input, timeline=""):
         profile, 
         user_query=f"Strategic analysis of: {action_input}", 
         doc_types=["Lore", "Fact", "Rulebook", "Scene"],
-        current_timeline=timeline
+        current_timeline=timeline,
+        pov_context=""
     )
     
     #    Uses DB Manager for efficient batch content fetching
@@ -2143,6 +2155,33 @@ def get_content_by_ids(profile_name, id_list):
     Proxies to the optimized batch fetcher in the database manager.
     """
     return db.get_content_by_ids(profile_name, id_list)
+
+def _filter_rows_by_known_by(rows, pov_context: str):
+    """
+    Filters fragments based on the known_by field.
+    - Empty known_by = Universal, always included
+    - "Public" = always included
+    - Otherwise: only include if pov_context matches one of the known_by entries
+    pov_context is a comma-separated string of entities the current POV has access to.
+    """
+    if not pov_context:
+        return rows
+
+    pov_entities = {e.strip().lower() for e in pov_context.split(',') if e.strip()}
+    pov_entities.add('public')  # Public is always accessible
+
+    filtered = []
+    for r in rows:
+        known_by = r[7] if len(r) > 7 and r[7] else ""
+        if not known_by.strip():
+            # Empty = Universal — always include
+            filtered.append(r)
+            continue
+        doc_entities = {e.strip().lower() for e in known_by.split(',') if e.strip()}
+        # Include if any POV entity matches any doc entity
+        if doc_entities & pov_entities:
+            filtered.append(r)
+    return filtered
 
 def _filter_rows_by_timeline(rows, target_timeline):
     """
@@ -2591,7 +2630,8 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
         profile_name, 
         user_query=query, 
         doc_types=["Lore", "Fact", "Rulebook", "Scene", "Faction"],
-        current_timeline=timeline
+        current_timeline=timeline,
+        pov_context=""
     )
     smart_facts = db.get_content_by_ids(profile_name, relevant_ids)
     

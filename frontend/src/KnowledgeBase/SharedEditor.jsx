@@ -110,6 +110,11 @@ export default function SharedEditor({ profile, category, icon, color, descripti
   const [editMetadata, setEditMetadata] = useState("");
   const [isSavingMeta, setIsSavingMeta] = useState(false);
   const [showMeta, setShowMeta] = useState(false);
+
+  const [editKnownBy, setEditKnownBy] = useState("");
+  const [isSavingKnownBy, setIsSavingKnownBy] = useState(false);
+  const [knownByInput, setKnownByInput] = useState("");
+
   const [autoSplit, setAutoSplit] = useState(false);
 
   // Refs
@@ -134,12 +139,14 @@ export default function SharedEditor({ profile, category, icon, color, descripti
         setEditTimeline(item.timeline || "");
         setEditMetadata(item.metadata || "");
         setShowMeta(false); 
+        setEditKnownBy(item.known_by || "");
       }
     } else {
       setEditTitle("");
       setEditContent("");
       setEditTimeline("");
-      setEditMetadata("");  
+      setEditMetadata("");
+      setEditKnownBy("");
     }
   }, [selectedId, items]);
 
@@ -205,6 +212,21 @@ export default function SharedEditor({ profile, category, icon, color, descripti
       toast("Failed to save metadata: " + err.message, "error");
     } finally {
       setIsSavingMeta(false);
+    }
+  };
+
+  const handleSaveKnownBy = async () => {
+    if (!selectedId) return;
+    setIsSavingKnownBy(true);
+    try {
+      await axios.post(`${API_URL}/knowledge/known_by/${profile}/${selectedId}`, {
+        known_by: editKnownBy
+      });
+      toast("Access saved.", "success");
+    } catch (err) {
+      toast("Failed to save access: " + err.message, "error");
+    } finally {
+      setIsSavingKnownBy(false);
     }
   };
 
@@ -494,6 +516,78 @@ export default function SharedEditor({ profile, category, icon, color, descripti
             </button>
           </div>
         </div>
+
+        {/* --- KNOWN BY PANEL --- */}
+        {selectedId && (
+          <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a', padding: '12px 25px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ fontSize: '13px', color: '#71717a', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Known By
+              </span>
+              <span style={{ fontSize: '11px', color: '#3f3f46' }}>Empty = Universal (everyone)</span>
+            </div>
+            <div style={{ fontSize: '12px', color: '#52525b', marginBottom: '8px' }}>
+              Who has access to this information? Use faction names, character names, or "Public". Comma-separated.
+            </div>
+
+            {/* Tag display */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', minHeight: '28px' }}>
+              {editKnownBy.split(',').filter(e => e.trim()).map((entity, i) => (
+                <span key={i} style={{ fontSize: '12px', background: '#27272a', border: '1px solid #3f3f46', color: '#e4e4e7', padding: '3px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {entity.trim()}
+                  <button
+                    onClick={() => {
+                      const updated = editKnownBy.split(',').filter((_, idx) => idx !== i).join(', ');
+                      setEditKnownBy(updated);
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', padding: '0', fontSize: '12px', lineHeight: 1 }}
+                  >×</button>
+                </span>
+              ))}
+              {!editKnownBy && (
+                <span style={{ fontSize: '12px', color: '#3f3f46', fontStyle: 'italic' }}>Universal — no restrictions</span>
+              )}
+            </div>
+
+            {/* Input for adding new entity */}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                value={knownByInput}
+                onChange={e => setKnownByInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && knownByInput.trim()) {
+                    const current = editKnownBy ? editKnownBy.split(',').map(x => x.trim()).filter(Boolean) : [];
+                    if (!current.includes(knownByInput.trim())) {
+                      setEditKnownBy([...current, knownByInput.trim()].join(', '));
+                    }
+                    setKnownByInput('');
+                  }
+                }}
+                placeholder="Type entity name and press Enter..."
+                style={{ flex: 1, background: '#111', border: '1px solid #27272a', color: '#fff', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', outline: 'none' }}
+              />
+              <button
+                onClick={() => {
+                  if (knownByInput.trim()) {
+                    const current = editKnownBy ? editKnownBy.split(',').map(x => x.trim()).filter(Boolean) : [];
+                    if (!current.includes(knownByInput.trim())) {
+                      setEditKnownBy([...current, knownByInput.trim()].join(', '));
+                    }
+                    setKnownByInput('');
+                  }
+                }}
+                style={{ padding: '8px 12px', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
+              >Add</button>
+              <button
+                onClick={handleSaveKnownBy}
+                disabled={isSavingKnownBy}
+                style={{ padding: '8px 14px', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+              >
+                {isSavingKnownBy ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* --- METADATA PANEL --- */}
         {selectedId && (
