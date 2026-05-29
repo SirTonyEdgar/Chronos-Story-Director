@@ -1951,6 +1951,53 @@ def bulk_regenerate_metadata(profile_name: str) -> dict:
     print(f"  [Bulk Re-metadata] Done. Success: {success}, Skipped: {skipped}, Failed: {failed}")
     return {"total": total, "success": success, "skipped": skipped, "failed": failed}
 
+def bulk_regenerate_metadata_stream(profile_name: str):
+    """
+    Generator version of bulk_regenerate_metadata that yields progress events.
+    Used by the SSE streaming endpoint.
+    Yields dicts with: type, current, total, filename, status
+    """
+    fragments = db.get_all_fragments_for_remetadata(profile_name)
+    total = len(fragments)
+    success = 0
+    failed = 0
+    skipped = 0
+
+    yield {"type": "start", "total": total}
+
+    paths = db.get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=60)
+    c = conn.cursor()
+
+    for i, (frag_id, filename, content, frag_type) in enumerate(fragments):
+        current = i + 1
+        if not content or len(content.strip()) < 50:
+            skipped += 1
+            yield {"type": "progress", "current": current, "total": total,
+                   "filename": filename, "status": "skipped"}
+            continue
+        try:
+            new_metadata = generate_file_metadata(profile_name, content)
+            if new_metadata:
+                c.execute("UPDATE memory_fragments SET metadata = ? WHERE id = ?", (new_metadata, frag_id))
+                success += 1
+                yield {"type": "progress", "current": current, "total": total,
+                       "filename": filename, "status": "success"}
+            else:
+                skipped += 1
+                yield {"type": "progress", "current": current, "total": total,
+                       "filename": filename, "status": "skipped"}
+        except Exception as e:
+            failed += 1
+            yield {"type": "progress", "current": current, "total": total,
+                   "filename": filename, "status": "failed", "error": str(e)}
+
+    conn.commit()
+    conn.close()
+
+    yield {"type": "done", "total": total, "success": success,
+           "skipped": skipped, "failed": failed}
+
 def save_edited_scene(profile: str, filename: str, content: str) -> tuple[bool, str]:
     """
     Overwrites a scene file with manual edits and updates the database with new metadata.

@@ -15,6 +15,7 @@ from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from sse_starlette.sse import EventSourceResponse
 import shutil
 import os
 
@@ -597,6 +598,35 @@ def bulk_remetadata(profile: str):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/knowledge/remetadata/stream/{profile}")
+async def bulk_remetadata_stream(profile: str):
+    """
+    Streams bulk re-metadata progress as Server-Sent Events.
+    Uses asyncio.Queue to avoid blocking the event loop.
+    """
+    import asyncio
+    import threading
+
+    loop = asyncio.get_event_loop()
+    q = asyncio.Queue()
+
+    def run_in_thread():
+        for event in engine.bulk_regenerate_metadata_stream(profile):
+            asyncio.run_coroutine_threadsafe(q.put(event), loop)
+        asyncio.run_coroutine_threadsafe(q.put(None), loop)
+
+    thread = threading.Thread(target=run_in_thread, daemon=True)
+    thread.start()
+
+    async def event_generator():
+        while True:
+            event = await q.get()
+            if event is None:
+                break
+            yield {"data": json.dumps(event)}
+
+    return EventSourceResponse(event_generator())
 
 @app.post("/knowledge/delete/{profile}")
 def delete_knowledge_entry(profile: str, req: DeleteRequest):

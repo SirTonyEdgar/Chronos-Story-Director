@@ -22,6 +22,8 @@ export default function KnowledgeBase({ profile }) {
 
   const [isRemetadata, setIsRemetadata] = useState(false);
   const [remetadataResult, setRemetadataResult] = useState(null);
+  const [remetadataProgress, setRemetadataProgress] = useState(null);
+  // { current, total, filename, recentFiles: [{filename, status}] }
 
   useEffect(() => {
     localStorage.setItem("chronos_kb_tab", activeTab);
@@ -36,14 +38,46 @@ export default function KnowledgeBase({ profile }) {
 
     setIsRemetadata(true);
     setRemetadataResult(null);
+    setRemetadataProgress({ current: 0, total: 0, filename: '', recentFiles: [] });
+
     try {
-      const res = await axios.post(`${API_URL}/knowledge/remetadata/${profile}`);
-      setRemetadataResult(res.data);
-      toast(`Metadata regenerated. ${res.data.success} updated, ${res.data.skipped} skipped, ${res.data.failed} failed.`, "success");
+      const eventSource = new EventSource(`${API_URL}/knowledge/remetadata/stream/${profile}`);
+
+      eventSource.onmessage = (e) => {
+        const event = JSON.parse(e.data);
+
+        if (event.type === 'start') {
+          setRemetadataProgress({ current: 0, total: event.total, filename: 'Starting...', recentFiles: [] });
+        } else if (event.type === 'progress') {
+          setRemetadataProgress(prev => ({
+            current: event.current,
+            total: event.total,
+            filename: event.filename,
+            recentFiles: [
+              { filename: event.filename, status: event.status },
+              ...(prev?.recentFiles || [])
+            ].slice(0, 5)
+          }));
+        } else if (event.type === 'done') {
+          setRemetadataResult(event);
+          setRemetadataProgress(null);
+          setIsRemetadata(false);
+          toast(`Metadata regenerated. ${event.success} updated, ${event.skipped} skipped, ${event.failed} failed.`, "success");
+          eventSource.close();
+        }
+      };
+
+      eventSource.onerror = () => {
+        toast("Re-metadata stream disconnected.", "error");
+        setIsRemetadata(false);
+        setRemetadataProgress(null);
+        eventSource.close();
+      };
+
     } catch (err) {
-      toast("Bulk re-metadata failed: " + (err.response?.data?.detail || err.message), "error");
-    } finally {
+      toast("Bulk re-metadata failed: " + err.message, "error");
       setIsRemetadata(false);
+      setRemetadataProgress(null);
     }
   };
 
@@ -138,13 +172,45 @@ export default function KnowledgeBase({ profile }) {
             )}
           </div>
 
-          {/* Result Badge */}
-          {remetadataResult && (
-            <div style={styles.resultBadge}>
-              <CheckCircle2 size={13} color="#22c55e" />
-              <span>{remetadataResult.success} updated · {remetadataResult.skipped} skipped · {remetadataResult.failed} failed</span>
-            </div>
-          )}
+          {/* REMETADATA PROGRESS / RESULT */}
+        {(isRemetadata || remetadataResult) && (
+          <div style={{ margin: '0 20px 16px 20px', background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', padding: '14px', fontSize: '12px' }}>
+            {isRemetadata && remetadataProgress && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#71717a' }}>
+                  <span>Regenerating metadata...</span>
+                  <span>{remetadataProgress.current} / {remetadataProgress.total}</span>
+                </div>
+                <div style={{ background: '#18181b', borderRadius: '4px', height: '6px', overflow: 'hidden', marginBottom: '10px' }}>
+                  <div style={{
+                    height: '100%', borderRadius: '4px', background: '#3b82f6',
+                    width: remetadataProgress.total > 0 ? `${(remetadataProgress.current / remetadataProgress.total) * 100}%` : '0%',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+                <div style={{ color: '#52525b', marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Processing: {remetadataProgress.filename}
+                </div>
+                {remetadataProgress.recentFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    {remetadataProgress.recentFiles.map((f, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: f.status === 'success' ? '#4ade80' : f.status === 'failed' ? '#f87171' : '#52525b', opacity: 1 - i * 0.18 }}>
+                        <span>{f.status === 'success' ? '✓' : f.status === 'failed' ? '✗' : '–'}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.filename}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {!isRemetadata && remetadataResult && (
+              <div style={{ color: '#4ade80' }}>
+                ✓ Done — {remetadataResult.success} updated, {remetadataResult.skipped} skipped, {remetadataResult.failed} failed
+                <button onClick={() => setRemetadataResult(null)} style={{ marginLeft: '12px', background: 'none', border: 'none', color: '#52525b', cursor: 'pointer', fontSize: '11px' }}>dismiss</button>
+              </div>
+            )}
+          </div>
+        )}
 
           {/* Bulk Re-metadata Button */}
           <button
