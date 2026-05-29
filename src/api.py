@@ -62,6 +62,10 @@ class FileListRequest(BaseModel):
 class ChatQueryRequest(BaseModel):
     prompt: str
     timeline: str = ""
+    mode: str = "free"
+    session_id: Optional[int] = None
+    attached_content: str = ""
+    attached_filename: str = ""
 
 # -- War Room --
 class SimulationRequest(BaseModel):
@@ -327,32 +331,136 @@ def bulk_delete_files(profile: str, payload: FileListRequest):
 # 2. 🧠 CO-AUTHOR CHAT MODULE
 # ==========================================
 
-@app.get("/chat/history/{profile}")
-def get_chat_history(profile: str):
-    """Retrieves the persistent chat history for the project."""
-    return engine.get_chat_history(profile)
+@app.get("/chat/sessions/{profile}")
+def list_sessions(profile: str):
+    """Lists all chat sessions for a profile."""
+    return engine.list_chat_sessions(profile)
+
+@app.post("/chat/sessions/{profile}")
+def create_session(profile: str, payload: dict):
+    """Creates a new named chat session."""
+    name = payload.get("name", "New Session")
+    mode = payload.get("mode", "free")
+    session_id = engine.create_chat_session(profile, name, mode)
+    return {"id": session_id, "name": name, "mode": mode}
+
+@app.delete("/chat/sessions/{profile}/{session_id}")
+def delete_session(profile: str, session_id: int):
+    """Deletes a session and all its messages."""
+    engine.delete_chat_session(profile, session_id)
+    return {"status": "Deleted"}
+
+@app.post("/chat/sessions/{profile}/{session_id}/rename")
+def rename_session(profile: str, session_id: int, payload: dict):
+    """Renames a session."""
+    engine.rename_chat_session(profile, session_id, payload.get("name", ""))
+    return {"status": "Renamed"}
+
+@app.get("/chat/history/{profile}/{session_id}")
+def get_session_history(profile: str, session_id: int):
+    """Returns chat history for a specific session."""
+    return engine.get_session_history(profile, session_id)
 
 @app.post("/chat/query/{profile}")
 def query_co_author(profile: str, payload: ChatQueryRequest):
-    """Sends a user prompt to the Co-Author AI and retrieves the response."""
+    """Sends a user prompt to the Co-Author AI."""
     try:
-        # Save User Message
-        engine.save_chat_message(profile, "user", payload.prompt)
-        # Generate Response
-        response_text = engine.run_chat_query(profile, payload.prompt, timeline=payload.timeline)
-        # Save Assistant Message
-        engine.save_chat_message(profile, "assistant", response_text)
-        
+        engine.save_chat_message(profile, "user", payload.prompt, payload.session_id)
+        response_text = engine.run_chat_query(
+            profile, payload.prompt,
+            timeline=payload.timeline,
+            mode=payload.mode,
+            attached_content=payload.attached_content,
+            attached_filename=payload.attached_filename,
+            session_id=payload.session_id
+        )
+        engine.save_chat_message(profile, "assistant", response_text, payload.session_id)
         return {"response": response_text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat/clear/{profile}")
 def clear_chat_history(profile: str):
-    """Wipes the chat history for the current profile."""
+    """Legacy — clears all chat history."""
     engine.clear_chat_history(profile)
     return {"status": "History Cleared"}
 
+@app.post("/chat/lock/{profile}")
+def lock_message(profile: str, payload: dict):
+    """Locks a message as canon."""
+    try:
+        lock_id = engine.lock_chat_message(
+            profile,
+            payload.get("session_id"),
+            payload.get("message_index"),
+            payload.get("content", "")
+        )
+        return {"id": lock_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/chat/lock/{profile}/{lock_id}")
+def unlock_message(profile: str, lock_id: int):
+    """Removes a lock."""
+    engine.unlock_chat_message(profile, lock_id)
+    return {"status": "Unlocked"}
+
+@app.get("/chat/locked/{profile}/{session_id}")
+def get_locked_items(profile: str, session_id: int):
+    """Returns all locked items for a session."""
+    return engine.get_locked_items(profile, session_id)
+
+@app.post("/chat/proposals/extract/{profile}")
+def extract_proposals(profile: str, payload: dict):
+    """Extracts proposals from an AI response."""
+    try:
+        proposals = engine.extract_proposals_from_response(
+            profile,
+            payload.get("response_text", ""),
+            payload.get("session_id")
+        )
+        return {"proposals": proposals}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/chat/proposals/{profile}/{session_id}")
+def get_proposals(profile: str, session_id: int):
+    """Returns all proposals for a session."""
+    return engine.get_chat_proposals(profile, session_id)
+
+@app.post("/chat/proposals/{profile}/{proposal_id}/status")
+def update_proposal(profile: str, proposal_id: int, payload: dict):
+    """Updates proposal status."""
+    engine.update_proposal_status(profile, proposal_id, payload.get("status", "pending"))
+    return {"status": "Updated"}
+
+@app.delete("/chat/proposals/{profile}/{proposal_id}")
+def delete_proposal(profile: str, proposal_id: int):
+    """Deletes a proposal."""
+    engine.delete_chat_proposal(profile, proposal_id)
+    return {"status": "Deleted"}
+
+@app.post("/chat/contradictions/{profile}")
+def check_contradictions(profile: str, payload: dict):
+    """Checks attached content for contradictions with the KB."""
+    try:
+        results = engine.check_contradictions_in_content(
+            profile,
+            payload.get("content", ""),
+            payload.get("filename", "")
+        )
+        return {"contradictions": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/chat/summary/{profile}/{session_id}")
+def get_session_summary(profile: str, session_id: int):
+    """Generates a session summary."""
+    try:
+        summary = engine.generate_session_summary(profile, session_id)
+        return {"summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
 # 3. ⚔️ WAR ROOM MODULE

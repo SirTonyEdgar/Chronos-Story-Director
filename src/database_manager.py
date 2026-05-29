@@ -175,6 +175,36 @@ def init_db(profile_name: str):
         role TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    try:
+        c.execute("ALTER TABLE chat_history ADD COLUMN session_id INTEGER DEFAULT NULL")
+    except sqlite3.OperationalError:
+        pass
+
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        mode TEXT DEFAULT 'free',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_locked_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        message_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_proposals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        target_type TEXT DEFAULT '',
+        target_id TEXT DEFAULT '',
+        status TEXT DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )''')
+
     c.execute('''CREATE TABLE IF NOT EXISTS faction_memory (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         faction_name TEXT, reaction_text TEXT, source_scene TEXT,
@@ -717,9 +747,158 @@ def complete_project(profile_name: str, index: int, lore_summary: str, doc_type=
     return True, f"Project '{proj['Name']}' completed and archived to Knowledge Base."
 
 # ==========================================
-# --- CHAT & REACTION HISTORY ---
+# --- CHAT SESSIONS ---
 # ==========================================
-def get_chat_history(profile_name):
+
+def create_chat_session(profile_name: str, name: str, mode: str = "free") -> int:
+    """Creates a new named chat session."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=30)
+    c = conn.cursor()
+    c.execute("INSERT INTO chat_sessions (name, mode) VALUES (?, ?)", (name, mode))
+    session_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return session_id
+
+def list_chat_sessions(profile_name: str) -> List[dict]:
+    """Returns all sessions for a profile, newest first."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id, name, mode, created_at FROM chat_sessions ORDER BY id DESC")
+        rows = [{"id": r[0], "name": r[1], "mode": r[2], "created_at": r[3]} for r in c.fetchall()]
+        return rows
+    except Exception as e:
+        print(f"Error listing sessions: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_session_history(profile_name: str, session_id: int) -> List[dict]:
+    """Returns chat history for a specific session."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id, role, content, timestamp FROM chat_history WHERE session_id = ? ORDER BY id ASC", (session_id,))
+        rows = [{"id": r[0], "role": r[1], "content": r[2], "timestamp": r[3]} for r in c.fetchall()]
+        return rows
+    except Exception as e:
+        print(f"Error fetching session history: {e}")
+        return []
+    finally:
+        conn.close()
+
+def save_chat_message(profile_name: str, role: str, content: str, session_id: Optional[int] = None):
+    """Saves a chat message, optionally to a specific session."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=30)
+    c = conn.cursor()
+    c.execute("INSERT INTO chat_history (role, content, session_id) VALUES (?, ?, ?)", (role, content, session_id))
+    msg_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return msg_id
+
+def delete_chat_session(profile_name: str, session_id: int):
+    """Deletes a session and all its messages."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+    c.execute("DELETE FROM chat_locked_items WHERE session_id = ?", (session_id,))
+    c.execute("DELETE FROM chat_proposals WHERE session_id = ?", (session_id,))
+    c.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
+    conn.commit()
+    conn.close()
+
+def rename_chat_session(profile_name: str, session_id: int, new_name: str):
+    """Renames a session."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE chat_sessions SET name = ? WHERE id = ?", (new_name, session_id))
+    conn.commit()
+    conn.close()
+
+def lock_chat_message(profile_name: str, session_id: int, message_index: int, content: str) -> int:
+    """Locks a message as canon."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=30)
+    c = conn.cursor()
+    c.execute("INSERT INTO chat_locked_items (session_id, message_index, content) VALUES (?, ?, ?)",
+              (session_id, message_index, content))
+    lock_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return lock_id
+
+def get_locked_items(profile_name: str, session_id: int) -> List[dict]:
+    """Returns all locked items for a session."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id, message_index, content, created_at FROM chat_locked_items WHERE session_id = ? ORDER BY id ASC", (session_id,))
+        return [{"id": r[0], "message_index": r[1], "content": r[2], "created_at": r[3]} for r in c.fetchall()]
+    finally:
+        conn.close()
+
+def unlock_chat_message(profile_name: str, lock_id: int):
+    """Removes a lock."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("DELETE FROM chat_locked_items WHERE id = ?", (lock_id,))
+    conn.commit()
+    conn.close()
+
+def save_chat_proposal(profile_name: str, session_id: int, content: str,
+                       target_type: str = "", target_id: str = "") -> int:
+    """Saves an extracted proposal."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'], timeout=30)
+    c = conn.cursor()
+    c.execute("INSERT INTO chat_proposals (session_id, content, target_type, target_id) VALUES (?, ?, ?, ?)",
+              (session_id, content, target_type, target_id))
+    proposal_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return proposal_id
+
+def get_chat_proposals(profile_name: str, session_id: int) -> List[dict]:
+    """Returns all proposals for a session."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    try:
+        c.execute("SELECT id, content, target_type, target_id, status, created_at FROM chat_proposals WHERE session_id = ? ORDER BY id ASC", (session_id,))
+        return [{"id": r[0], "content": r[1], "target_type": r[2], "target_id": r[3], "status": r[4], "created_at": r[5]} for r in c.fetchall()]
+    finally:
+        conn.close()
+
+def update_proposal_status(profile_name: str, proposal_id: int, status: str):
+    """Updates proposal status: pending, applied, rejected."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE chat_proposals SET status = ? WHERE id = ?", (status, proposal_id))
+    conn.commit()
+    conn.close()
+
+def delete_chat_proposal(profile_name: str, proposal_id: int):
+    """Deletes a proposal."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("DELETE FROM chat_proposals WHERE id = ?", (proposal_id,))
+    conn.commit()
+    conn.close()
+
+def get_chat_history(profile_name: str) -> List[dict]:
+    """Legacy fallback — returns all messages without session filter."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
@@ -728,15 +907,8 @@ def get_chat_history(profile_name):
     conn.close()
     return rows
 
-def save_chat_message(profile_name, role, content):
-    paths = get_paths(profile_name)
-    conn = sqlite3.connect(paths['db'], timeout=30)
-    c = conn.cursor()
-    c.execute("INSERT INTO chat_history (role, content) VALUES (?, ?)", (role, content))
-    conn.commit()
-    conn.close()
-
-def clear_chat_history(profile_name):
+def clear_chat_history(profile_name: str):
+    """Legacy fallback — clears all chat history."""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
@@ -781,7 +953,7 @@ def save_faction_reaction(profile_name, faction, text, scene_name):
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'], timeout=30)
     c = conn.cursor()
-    c.execute("INSERT INTO faction_memory (faction_name, reaction_text, source_scene) VALUES (?, ?, ?)", 
+    c.execute("INSERT INTO faction_memory (faction_name, reaction_text, source_scene) VALUES (?, ?, ?)",
               (faction, text, scene_name))
     conn.commit()
     conn.close()
@@ -795,7 +967,6 @@ def get_recent_faction_memory(profile_name, faction, limit=3):
         rows = c.fetchall()
     except: return ""
     conn.close()
-    
     if not rows: return "No previous records found."
     return "\n".join([f"--- FROM SCENE: {r[1]} ---\n{r[0][:800]}...\n" for r in rows])
 

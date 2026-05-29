@@ -120,8 +120,20 @@ def delete_fragment(p, i):
 def rename_fragment(p, i, n): return db.rename_fragment(p, i, n)
 def get_scene_original_draft(profile, filename): return db.get_scene_original_draft(profile, filename)
 def get_chat_history(p): return db.get_chat_history(p)
-def save_chat_message(p, r, c): return db.save_chat_message(p, r, c)
+def save_chat_message(p, r, c, session_id=None): return db.save_chat_message(p, r, c, session_id)
 def clear_chat_history(p): return db.clear_chat_history(p)
+def create_chat_session(profile, name, mode="free"): return db.create_chat_session(profile, name, mode)
+def list_chat_sessions(profile): return db.list_chat_sessions(profile)
+def get_session_history(profile, session_id): return db.get_session_history(profile, session_id)
+def delete_chat_session(profile, session_id): return db.delete_chat_session(profile, session_id)
+def rename_chat_session(profile, session_id, name): return db.rename_chat_session(profile, session_id, name)
+def lock_chat_message(profile, session_id, message_index, content): return db.lock_chat_message(profile, session_id, message_index, content)
+def get_locked_items(profile, session_id): return db.get_locked_items(profile, session_id)
+def unlock_chat_message(profile, lock_id): return db.unlock_chat_message(profile, lock_id)
+def save_chat_proposal(profile, session_id, content, target_type="", target_id=""): return db.save_chat_proposal(profile, session_id, content, target_type, target_id)
+def get_chat_proposals(profile, session_id): return db.get_chat_proposals(profile, session_id)
+def update_proposal_status(profile, proposal_id, status): return db.update_proposal_status(profile, proposal_id, status)
+def delete_chat_proposal(profile, proposal_id): return db.delete_chat_proposal(profile, proposal_id)
 def get_recent_faction_memory(p, f, l=3): return db.get_recent_faction_memory(p, f, l)
 def get_all_faction_memories(p): return db.get_all_faction_memories(p)
 def update_faction_reaction(p, i, t, f): return db.update_faction_reaction(p, i, t, f)
@@ -1962,89 +1974,232 @@ def clear_chat_history(profile_name):
     """Purges the chat history log."""
     db.clear_chat_history(profile_name)
 
-def run_chat_query(profile_name, user_input, timeline=""):
+def run_chat_query(profile_name: str, user_input: str, timeline: str = "",
+                   mode: str = "free", attached_content: str = "",
+                   attached_filename: str = "", session_id: Optional[int] = None) -> str:
     """
-    Interacts with the Co-Author persona (Adaptive Logic).
+    Interacts with the Co-Author persona.
+    Mode-aware: brainstorm, scene_repair, canon_work, free
     """
-    # 1. Retrieve Global Context
     rules, plan, _ = get_global_context(profile_name, timeline)
     state = db.get_world_state(profile_name)
     settings = db.get_story_settings(profile_name)
-
-    # 2. Get Recent Narrative
     recent_scenes = get_last_scenes(profile_name)
-    
-    # 3. Smart Retrieval (Internal Function)
-    print(f"  [Co-Author] Researching: '{user_input[:50]}...' in timeline: '{timeline}'")
+
     relevant_ids = get_relevant_fragment_ids(
-        profile_name, 
-        user_query=user_input, 
-        doc_types=["Lore", "Fact", "Rulebook", "Scene"],
+        profile_name,
+        user_query=user_input,
+        doc_types=["Lore", "Fact", "Rulebook", "Scene", "Character", "Faction"],
         current_timeline=timeline,
         pov_context=""
     )
-    
-    # Efficient Batch Fetch via DB
     smart_knowledge = db.get_content_by_ids(profile_name, relevant_ids)
     if not smart_knowledge:
-        smart_knowledge = "No specific database records found (Relying on General Knowledge)."
+        smart_knowledge = "No specific database records found."
 
-    # 4. Era / Tech-Level Detection (Standardized)
     use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
-    era_display = "Undefined (Infer Tech Level from Lore)"
+    era_display = "Undefined"
     if use_time_system and state.get('year', 0) > 0:
         era_display = f"{state['year']}"
 
     timeline_instruction = ""
     if timeline:
-        timeline_instruction = f"\n*** CRITICAL MULTIVERSE CONTEXT ***\nCURRENT TIMELINE: [{timeline}]\nYou must answer the user's query strictly based on the facts and realities of this specific timeline. Do not blend facts from other universes."
-    
-    # 5. Construct Prompt (HIERARCHY OF TRUTH + CALENDAR AGNOSTIC)
+        timeline_instruction = f"\n*** ACTIVE TIMELINE: [{timeline}] ***\nAnswer strictly within this timeline's facts.\n"
+
+    attached_block = ""
+    if attached_content:
+        attached_block = f"\n*** ATTACHED REFERENCE MATERIAL: {attached_filename} ***\n{attached_content[:8000]}\n"
+
+    # Mode-specific behavior instructions
+    mode_instructions = {
+        "brainstorm": """
+    BEHAVIOR MODE: BRAINSTORM
+    - Ask one clarifying question before giving a definitive answer if the query is ambiguous.
+    - Propose 2-3 options when multiple valid approaches exist. Let the user choose.
+    - Actively flag contradictions with existing lore before answering.
+    - After each substantive conclusion, end with: "Ready to lock this as canon?"
+    - Think out loud. Show your reasoning, not just your conclusion.
+    """,
+        "scene_repair": """
+    BEHAVIOR MODE: SCENE REPAIR
+    - Focus on narrative craft: pacing, dialogue, character voice, tension, continuity.
+    - When identifying problems, be specific — name the exact line or passage.
+    - Propose concrete rewrites, not abstract advice.
+    - Check the attached scene against established character voices in the Knowledge Base.
+    - After proposing a fix, ask: "Want me to revise further or is this the direction?"
+    """,
+        "canon_work": """
+    BEHAVIOR MODE: CANON/LORE WORK
+    - Prioritize internal consistency above all else.
+    - Cross-reference every answer against the Story Bible before stating it.
+    - Flag any statement you make that could conflict with existing established facts.
+    - When establishing new canon, state it clearly as: "PROPOSED CANON: [statement]"
+    - Be conservative — if uncertain, flag it rather than guess.
+    """,
+        "free": """
+    BEHAVIOR MODE: FREE CHAT
+    - Answer naturally and helpfully.
+    - Use the Story Bible as primary reference.
+    - Apply the Hierarchy of Truth: Lore > Real World > Inference.
+    """
+    }
+
+    behavior = mode_instructions.get(mode, mode_instructions["free"])
+
     prompt = f"""
-    ROLE: Co-Author & Omniscient Editor.
-    
-    *** TEMPORAL STATUS ***
-    CURRENT CALENDAR YEAR: {era_display}
+    ROLE: Co-Author & Story Collaborator.
+    CURRENT YEAR: {era_display}
     {timeline_instruction}
-    
+    {behavior}
+    {attached_block}
     *** PRIMARY SOURCE OF TRUTH (STORY BIBLE) ***
     {smart_knowledge}
-    
-    *** WORLD RULES (IMMUTABLE) ***
+
+    *** WORLD RULES ***
     {rules}
-    
-    *** FUTURE PLANS (DRAFTS) ***
+
+    *** FUTURE PLANS ***
     {plan[:3000]}
-    
+
     *** CURRENT WORLD STATE ***
     {json.dumps(state)}
-    
+
     *** RECENT NARRATIVE ***
     {recent_scenes}
-    
-    *** USER QUERY ***
+
+    *** USER MESSAGE ***
     "{user_input}"
-    
-    *** INSTRUCTION & LOGIC ***
-    You are an Omniscient Editor. You know real-world history AND the story's lore.
-    Follow this HIERARCHY OF TRUTH to answer the query:
-    
-    1. RANK 1: LORE & RULES (ABSOLUTE TRUTH)
-       - If the Story Bible mentions a technology or concept, ACCEPT IT as fact, regardless of the year.
-       - If Lore says "Year 407" has airships, then airships exist. Do NOT assume "Year 407" means "Real Earth 407 AD".
-    
-    2. RANK 2: REAL WORLD KNOWLEDGE (CONDITIONAL FALLBACK)
-       - If the Lore is SILENT, check the setting type:
-         * IF EARTH-BASED: Use real-world history/science for the year {era_display}. (e.g. 1920 = Prohibition Era).
-         * IF FANTASY/ALIEN: Do NOT use Earth history. Infer the logic from the Rules (e.g. "If magic exists, use magic for medicine, not leeches").
-    
-    3. RANK 3: CHRONOLOGY CHECK (THE SAFETY NET)
-       - If the user asks for something that contradicts Rank 1 or Rank 2 (e.g. "iPhone in 1920"), FLAG IT as an anachronism.
-       - However, if the user asks for a DEFINITION (e.g. "What is an iPhone?"), answer accurately but note it doesn't exist yet in the story.
+
+    *** HIERARCHY OF TRUTH ***
+    1. Story Bible and Rules = absolute truth
+    2. Real world history/science = conditional fallback if lore is silent and setting is Earth-based
+    3. Fantasy/alien settings = infer from Rules, never assume Earth
     """
-    
+
     llm = get_llm(profile_name, "coauthor")
     return llm.invoke([HumanMessage(content=prompt)]).content
+
+def extract_proposals_from_response(profile_name: str, response_text: str, session_id: int) -> List[dict]:
+    """
+    Extracts concrete proposals from an AI response.
+    Returns structured proposal items for the tracker.
+    """
+    prompt = f"""
+    TASK: Extract concrete proposals from this AI response.
+    A proposal is any suggestion to: create a new KB entry, update an existing file, 
+    revise a scene, change world state, or establish a new fact.
+
+    RESPONSE TO ANALYZE:
+    {response_text[:4000]}
+
+    For each proposal found, output a JSON object with:
+    - content: the exact proposed content or change (be specific)
+    - target_type: one of "Lore", "Fact", "Plan", "Character", "Faction", "Scene", "WorldState", "New"
+    - summary: one sentence describing what this proposal does
+
+    OUTPUT: JSON array only. If no concrete proposals, output: []
+    Example: [{{"content": "The Chronos Kernel is a custom OS kernel optimized for I/O throughput", "target_type": "Fact", "summary": "Establishes technical definition of the Chronos Kernel"}}]
+    """
+    try:
+        llm = get_llm(profile_name, "validator")
+        res = llm.invoke([HumanMessage(content=prompt)]).content
+        proposals = _extract_json(res)
+        if isinstance(proposals, list):
+            saved = []
+            for p in proposals:
+                proposal_id = db.save_chat_proposal(
+                    profile_name, session_id,
+                    p.get("content", ""),
+                    p.get("target_type", ""),
+                    ""
+                )
+                saved.append({"id": proposal_id, **p})
+            return saved
+        return []
+    except Exception as e:
+        print(f"Proposal extraction error: {e}")
+        return []
+
+def check_contradictions_in_content(profile_name: str, content: str, filename: str) -> List[dict]:
+    """
+    Checks attached content against the Knowledge Base for contradictions.
+    Manual trigger only.
+    """
+    all_frags = db.get_fragments(profile_name, doc_type=None)
+    lore_frags = [r for r in all_frags if r[3] in ["Lore", "Fact", "Character", "Faction", "Rulebook"]]
+    
+    if not lore_frags:
+        return []
+
+    kb_summary = "\n".join([f"- [{r[3]}] {r[1]}: {r[4][:200] if r[4] else r[2][:200]}" for r in lore_frags[:50]])
+
+    prompt = f"""
+    ROLE: Continuity Auditor.
+    TASK: Find contradictions between the attached document and the existing Knowledge Base.
+
+    *** ATTACHED DOCUMENT: {filename} ***
+    {content[:5000]}
+
+    *** EXISTING KNOWLEDGE BASE ENTRIES (titles and summaries) ***
+    {kb_summary}
+
+    Find direct contradictions — not stylistic differences, but factual conflicts.
+    For each contradiction, output:
+    - issue: description of the conflict
+    - attached_says: what the attached document states
+    - kb_says: what the Knowledge Base states
+    - kb_entry: which KB entry conflicts
+
+    OUTPUT: JSON array only. If no contradictions, output: []
+    """
+
+    try:
+        llm = get_llm(profile_name, "validator")
+        res = llm.invoke([HumanMessage(content=prompt)]).content
+        contradictions = _extract_json(res)
+        if isinstance(contradictions, list):
+            return contradictions
+        return []
+    except Exception as e:
+        print(f"Contradiction check error: {e}")
+        return []
+
+def generate_session_summary(profile_name: str, session_id: int) -> str:
+    """
+    Generates a compact summary of a chat session.
+    """
+    history = db.get_session_history(profile_name, session_id)
+    locked = db.get_locked_items(profile_name, session_id)
+
+    if not history:
+        return "No messages in this session."
+
+    conversation = "\n".join([f"{m['role'].upper()}: {m['content'][:500]}" for m in history[-30:]])
+    locked_str = "\n".join([f"- {l['content'][:200]}" for l in locked]) if locked else "None"
+
+    prompt = f"""
+    TASK: Summarize this creative writing session concisely.
+
+    *** CONVERSATION ***
+    {conversation}
+
+    *** LOCKED CANON ITEMS ***
+    {locked_str}
+
+    Produce a summary with these sections:
+    1. ESTABLISHED: What was confirmed or canonized
+    2. PROPOSED CHANGES: What revisions were suggested (not yet applied)
+    3. UNRESOLVED: What questions remain open
+    4. FILES TO UPDATE: Which project files likely need updating based on this session
+
+    Be specific and concise. Use bullet points.
+    """
+
+    try:
+        llm = get_llm(profile_name, "coauthor")
+        return llm.invoke([HumanMessage(content=prompt)]).content
+    except Exception as e:
+        return f"Summary generation failed: {e}"
 
 # ==========================================
 # 6. WAR ROOM MODULE
