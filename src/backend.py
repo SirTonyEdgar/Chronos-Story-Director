@@ -124,6 +124,33 @@ def add_fragment(p, n, c, t, tl="", reveal_date=""):
     invalidate_retrieval_cache(p)
     return result
 def update_fragment(p, i, c, tl=""):
+    # Faction versioning — archive old content to Lore only on significant changes
+    try:
+        old_rows = db.get_fragments(p, "Faction")
+        for row in old_rows:
+            if row[0] == i:
+                old_name = row[1]
+                old_content = row[2] or ""
+                old_timeline = row[5] or ""
+
+                if old_content.strip() and c.strip():
+                    import difflib
+                    similarity = difflib.SequenceMatcher(
+                        None, old_content.strip(), c.strip()
+                    ).ratio()
+
+                    if similarity < 0.90:
+                        import datetime
+                        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                        archive_name = f"[Archive] {old_name} — {timestamp}"
+                        db.add_fragment(p, archive_name, old_content, "Lore", old_timeline)
+                        print(f"  [Versioning] Archived '{old_name}' (similarity: {similarity:.2f})")
+                    else:
+                        print(f"  [Versioning] Minor edit detected for '{old_name}' — skipping archive (similarity: {similarity:.2f})")
+                break
+    except Exception as e:
+        print(f"  [Versioning] Archive failed (non-fatal): {e}")
+
     result = db.update_fragment(p, i, c, tl)
     invalidate_retrieval_cache(p)
     return result
