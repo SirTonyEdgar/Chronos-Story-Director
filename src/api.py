@@ -66,11 +66,13 @@ class ChatQueryRequest(BaseModel):
     session_id: Optional[int] = None
     attached_content: str = ""
     attached_filename: str = ""
+    web_search: bool = False
 
 # -- War Room --
 class SimulationRequest(BaseModel):
     scenario: str
     timeline: str = ""
+    web_search: bool = False
 
 # -- Knowledge Base --
 class KnowledgeItem(BaseModel):
@@ -363,17 +365,26 @@ def get_session_history(profile: str, session_id: int):
 
 @app.post("/chat/query/{profile}")
 def query_co_author(profile: str, payload: ChatQueryRequest):
-    """Sends a user prompt to the Co-Author AI."""
     try:
         engine.save_chat_message(profile, "user", payload.prompt, payload.session_id)
-        response_text = engine.run_chat_query(
-            profile, payload.prompt,
-            timeline=payload.timeline,
-            mode=payload.mode,
-            attached_content=payload.attached_content,
-            attached_filename=payload.attached_filename,
-            session_id=payload.session_id
-        )
+        if payload.web_search:
+            response_text = engine.run_chat_query_with_search(
+                profile, payload.prompt,
+                timeline=payload.timeline,
+                mode=payload.mode,
+                attached_content=payload.attached_content,
+                attached_filename=payload.attached_filename,
+                session_id=payload.session_id
+            )
+        else:
+            response_text = engine.run_chat_query(
+                profile, payload.prompt,
+                timeline=payload.timeline,
+                mode=payload.mode,
+                attached_content=payload.attached_content,
+                attached_filename=payload.attached_filename,
+                session_id=payload.session_id
+            )
         engine.save_chat_message(profile, "assistant", response_text, payload.session_id)
         return {"response": response_text}
     except Exception as e:
@@ -466,15 +477,16 @@ def get_session_summary(profile: str, session_id: int):
 # 3. ⚔️ WAR ROOM MODULE
 # ==========================================
 
-@app.post("/simulation/run/{profile}")
+@app.post("/warroom/{profile}")
 def run_strategic_simulation(profile: str, payload: SimulationRequest):
-    """Runs the Monte Carlo Strategy Simulator."""
     try:
-        report = engine.run_war_room_simulation(profile, payload.scenario, timeline=payload.timeline)
+        if payload.web_search:
+            report = engine.run_war_room_with_search(profile, payload.scenario, timeline=payload.timeline)
+        else:
+            report = engine.run_war_room_simulation(profile, payload.scenario, timeline=payload.timeline)
         return {"report": report}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ==========================================
 # 4. 🗄️ KNOWLEDGE BASE MODULE

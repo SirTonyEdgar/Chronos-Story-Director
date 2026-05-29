@@ -12,6 +12,7 @@ export default function WarRoom({ profile }) {
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [planName, setPlanName] = useState("");
+  const [webSearch, setWebSearch] = useState(false);
 
   const handleRun = async () => {
     if (!scenario) return toast("Please define a scenario first.", "warning");
@@ -19,8 +20,9 @@ export default function WarRoom({ profile }) {
     setReport(""); 
 
     try {
-      const res = await axios.post(`${API_URL}/simulation/run/${profile}`, {
-        scenario: scenario
+      const res = await axios.post(`${API_URL}/warroom/${profile}`, {
+        scenario: scenario,
+        web_search: webSearch
       });
       setReport(res.data.report);
     } catch (err) {
@@ -118,6 +120,38 @@ export default function WarRoom({ profile }) {
                 fontFamily: 'inherit'
               }}
             />
+          </div>
+
+          <div
+            onClick={() => setWebSearch(!webSearch)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '10px 14px', borderRadius: '6px', cursor: 'pointer',
+              background: webSearch ? 'rgba(59,130,246,0.1)' : 'transparent',
+              border: '1px solid ' + (webSearch ? '#3b82f6' : '#27272a'),
+              transition: 'all 0.2s'
+            }}
+          >
+            <div style={{
+              width: '32px', height: '18px', borderRadius: '9px',
+              background: webSearch ? '#3b82f6' : '#27272a',
+              position: 'relative', transition: 'background 0.2s', flexShrink: 0
+            }}>
+              <div style={{
+                width: '14px', height: '14px', borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: '2px',
+                left: webSearch ? '16px' : '2px',
+                transition: 'left 0.2s'
+              }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: '600', color: webSearch ? '#60a5fa' : '#71717a' }}>
+                Web Search
+              </div>
+              <div style={{ fontSize: '11px', color: '#52525b' }}>
+                {webSearch ? 'Grounding analysis in real-world data' : 'Claude & Gemini models only'}
+              </div>
+            </div>
           </div>
 
           <button

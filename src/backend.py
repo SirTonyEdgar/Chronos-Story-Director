@@ -2149,6 +2149,91 @@ def run_chat_query(profile_name: str, user_input: str, timeline: str = "",
     llm = get_llm(profile_name, "coauthor")
     return llm.invoke([HumanMessage(content=prompt)]).content
 
+def run_chat_query_with_search(profile_name: str, user_input: str, timeline: str = "",
+                                mode: str = "free", attached_content: str = "",
+                                attached_filename: str = "", session_id: Optional[int] = None) -> str:
+    """
+    Co-Author Chat with live web search.
+    Provider-aware: Claude uses Anthropic search, Gemini uses Google Search grounding.
+    """
+    rules, plan, _ = get_global_context(profile_name, timeline)
+    state = db.get_world_state(profile_name)
+    settings = db.get_story_settings(profile_name)
+    recent_scenes = get_last_scenes(profile_name)
+
+    relevant_ids = get_relevant_fragment_ids(
+        profile_name,
+        user_query=user_input,
+        doc_types=["Lore", "Fact", "Rulebook", "Scene", "Character", "Faction"],
+        current_timeline=timeline,
+        pov_context=""
+    )
+    smart_knowledge = db.get_content_by_ids(profile_name, relevant_ids)
+    if not smart_knowledge:
+        smart_knowledge = "No specific database records found."
+
+    use_time_system = settings.get('use_time_system', 'true').lower() == 'true'
+    era_display = "Undefined"
+    if use_time_system and state.get('year', 0) > 0:
+        era_display = f"{state['year']}"
+
+    timeline_instruction = ""
+    if timeline:
+        timeline_instruction = f"\n*** ACTIVE TIMELINE: [{timeline}] ***\nAnswer strictly within this timeline's facts.\n"
+
+    attached_block = ""
+    if attached_content:
+        attached_block = f"\n*** ATTACHED REFERENCE MATERIAL: {attached_filename} ***\n{attached_content[:8000]}\n"
+
+    mode_instructions = {
+        "brainstorm": "BEHAVIOR MODE: BRAINSTORM — Ask clarifying questions, propose 2-3 options, flag contradictions, end with 'Ready to lock this as canon?'",
+        "scene_repair": "BEHAVIOR MODE: SCENE REPAIR — Focus on narrative craft. Name specific problems. Propose concrete rewrites.",
+        "canon_work": "BEHAVIOR MODE: CANON/LORE WORK — Prioritize consistency. Flag conflicts. State new canon as 'PROPOSED CANON: [statement]'",
+        "free": "BEHAVIOR MODE: FREE CHAT — Answer naturally. Story Bible is primary reference."
+    }
+    behavior = mode_instructions.get(mode, mode_instructions["free"])
+
+    prompt = f"""
+    ROLE: Co-Author & Story Collaborator with real-world research capability.
+    CURRENT YEAR: {era_display}
+    {timeline_instruction}
+    {behavior}
+    {attached_block}
+
+    *** PRIMARY SOURCE OF TRUTH (STORY BIBLE) ***
+    {smart_knowledge}
+
+    *** WORLD RULES ***
+    {rules}
+
+    *** FUTURE PLANS ***
+    {plan[:3000]}
+
+    *** CURRENT WORLD STATE ***
+    {json.dumps(state)}
+
+    *** RECENT NARRATIVE ***
+    {recent_scenes}
+
+    *** USER MESSAGE ***
+    "{user_input}"
+
+    *** RESEARCH CAPABILITY ***
+    You have access to web search. Use it when the user asks about real-world facts, historical events, current information, or anything requiring external verification. The Story Bible always takes precedence over search results.
+
+    *** HIERARCHY OF TRUTH ***
+    1. Story Bible and Rules = absolute truth
+    2. Web search results = real-world grounding when Bible is silent
+    3. Fantasy/alien settings = infer from Rules, never assume Earth
+    """
+
+    try:
+        result, _ = _run_llm_with_web_search(profile_name, prompt, "coauthor")
+        return result
+    except Exception as e:
+        print(f"  [Co-Author Search fallback] {e}")
+        return run_chat_query(profile_name, user_input, timeline, mode, attached_content, attached_filename, session_id)
+
 def extract_proposals_from_response(profile_name: str, response_text: str, session_id: int) -> List[dict]:
     """
     Extracts concrete proposals from an AI response.
@@ -2275,6 +2360,74 @@ def generate_session_summary(profile_name: str, session_id: int) -> str:
 # 6. WAR ROOM MODULE
 # ==========================================
 
+def _anthropic_with_search(model_name: str, prompt: str) -> str:
+    """Runs an Anthropic Claude call with web_search tool enabled."""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        if "claude" not in model_name.lower():
+            model_name = "claude-sonnet-4-20250514"
+        response = client.messages.create(
+            model=model_name,
+            max_tokens=4000,
+            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            messages=[{"role": "user", "content": prompt}]
+        )
+        result = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                result += block.text
+        return result or "No response generated."
+    except Exception as e:
+        print(f"  [Anthropic Search Error] {e}")
+        raise
+
+def _gemini_with_search(model_name: str, prompt: str) -> str:
+    """Runs a Gemini call with Google Search grounding enabled."""
+    try:
+        client = new_genai.Client(api_key=GOOGLE_API_KEY)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=new_genai.types.GenerateContentConfig(
+                tools=[new_genai.types.Tool(
+                    google_search=new_genai.types.GoogleSearch()
+                )]
+            )
+        )
+        return response.text
+    except Exception as e:
+        print(f"  [Gemini Search Error] {e}")
+        raise
+
+def _run_llm_with_web_search(profile_name: str, prompt: str, task_type: str) -> tuple[str, bool]:
+    """
+    Provider-aware web search dispatcher.
+    Returns (response_text, search_was_used).
+    - Claude models: Anthropic API with web_search_20250305 tool
+    - Gemini models: Google Search grounding
+    - GPT/others: falls back to standard call with a note added to response
+    """
+    settings = db.get_story_settings(profile_name)
+    model_name = settings.get(f"model_{task_type}", "")
+
+    if "claude" in model_name.lower() and ANTHROPIC_API_KEY:
+        print(f"  [Web Search] Using Anthropic search for {model_name}")
+        result = _anthropic_with_search(model_name, prompt)
+        return result, True
+
+    elif "gemini" in model_name.lower() and GOOGLE_API_KEY:
+        print(f"  [Web Search] Using Gemini search grounding for {model_name}")
+        result = _gemini_with_search(model_name, prompt)
+        return result, True
+
+    else:
+        print(f"  [Web Search] Model '{model_name}' does not support web search — running without search.")
+        llm = get_llm(profile_name, task_type)
+        note = "\n\n[Web search was requested but is not supported by the current model. This response is based on training knowledge only.]\n"
+        result = llm.invoke([HumanMessage(content=prompt)]).content
+        return result + note, False
+
 def run_war_room_simulation(profile, action_input, timeline=""):
     """
     Executes a Monte Carlo strategic simulation (Smart Retrieval).
@@ -2369,6 +2522,94 @@ def run_war_room_simulation(profile, action_input, timeline=""):
     # 7. Execution
     llm = get_llm(profile, "warroom")
     return llm.invoke([HumanMessage(content=prompt)]).content
+
+def run_war_room_with_search(profile: str, action_input: str, timeline: str = "") -> str:
+    """
+    War Room simulation with live web search.
+    Provider-aware: Claude uses Anthropic search, Gemini uses Google Search grounding.
+    GPT and others fall back gracefully.
+    """
+    rules, plan, _ = get_global_context(profile, timeline)
+    state = db.get_world_state(profile)
+    recent_history = get_last_scenes(profile)
+
+    relevant_ids = get_relevant_fragment_ids(
+        profile,
+        user_query=f"Strategic analysis of: {action_input}",
+        doc_types=["Lore", "Fact", "Rulebook", "Scene"],
+        current_timeline=timeline,
+        pov_context=""
+    )
+    smart_intel = db.get_content_by_ids(profile, relevant_ids)
+    if not smart_intel:
+        smart_intel = "No specific intelligence dossiers found."
+
+    intel_packet = f"""
+    *** CURRENT ASSETS & STATUS ***
+    Protagonist Status: {json.dumps(state.get('Protagonist Status', {}))}
+    Known Cast & Factions: {json.dumps(state.get('Cast', []))}
+    Available Assets: {json.dumps(state.get('Assets', []))}
+    Current Skills: {json.dumps(state.get('Skills', []))}
+
+    *** IMMEDIATE CONTEXT (RECENT EVENTS) ***
+    {recent_history[-4000:]}
+
+    *** RELEVANT KNOWLEDGE (LORE/FACTS) ***
+    {smart_intel}
+    """
+
+    timeline_instruction = ""
+    if timeline:
+        timeline_instruction = f"\n*** ACTIVE UNIVERSE: [{timeline}] ***\nSimulate consequences strictly within the physics and continuity of this specific timeline.\n"
+
+    prompt = f"""
+    ROLE: Strategic Simulation Engine with real-world research capability.
+    {timeline_instruction}
+
+    *** WORLD RULES & PHYSICS ***
+    {rules}
+
+    *** CONTEXT PACKET ***
+    {intel_packet}
+
+    *** CURRENT GOAL ***
+    {plan[:2000]}
+
+    *** PROPOSED ACTION ***
+    "{action_input}"
+
+    *** MISSION ***
+    Simulate the consequences of this action. You have access to web search — use it to ground your analysis in real-world facts, historical precedents, and current events where relevant. Search for specific data points that would affect the simulation's accuracy.
+
+    *** REPORT FORMAT ***
+    ## 📊 Simulation Results
+    **Probability of Success:** [0-100%]
+
+    ### 1. Direct Consequences (Immediate Outcome)
+    * [What happens if the action succeeds/fails?]
+    * [Cost (Resources, Health, Reputation, or Time)]
+
+    ### 2. Second-Order Effects (The Ripple)
+    * [Unintended side effects on Relationships/Factions/Environment]
+    * [Systemic shifts (Social, Political, Economic, or Magical)]
+
+    ### 3. Critical Risks (Blowback)
+    * [Who/What reacts negatively?]
+    * [Potential catastrophe?]
+
+    ### 4. Real-World Grounding
+    * [Relevant historical precedents or current facts found via search]
+
+    ### 5. Verdict
+    [Go / No-Go recommendation]
+    """
+
+    try:
+        result, _ = _run_llm_with_web_search(profile, prompt, "warroom")
+        return result
+    except Exception as e:
+        print(f"  [War Room Search fallback] {e}")
+        return run_war_room_simulation(profile, action_input, timeline)
 
 # ==========================================
 # 7. RAG & KNOWLEDGE BASE MODULE

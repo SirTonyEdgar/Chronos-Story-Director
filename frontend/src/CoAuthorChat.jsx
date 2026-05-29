@@ -62,6 +62,8 @@ export default function CoAuthorChat({ profile }) {
   const [sessionSummary, setSessionSummary] = useState('');
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  
+  const [webSearch, setWebSearch] = useState(false);
 
   const scrollRef = useRef(null);
 
@@ -250,7 +252,8 @@ export default function CoAuthorChat({ profile }) {
         mode,
         session_id: activeSession.id,
         attached_content: attachedContent,
-        attached_filename: attachedFilename
+        attached_filename: attachedFilename,
+        web_search: webSearch
       });
       const aiMsg = { role: 'assistant', content: res.data.response, id: Date.now() + 1 };
       setHistory(prev => [...prev, aiMsg]);
@@ -763,6 +766,31 @@ export default function CoAuthorChat({ profile }) {
                 <FileText size={12} /> Attach
                 {attachments.length > 0 && <span style={{ background: '#3b82f6', color: '#fff', borderRadius: '10px', padding: '0 5px', fontSize: '10px' }}>{attachments.length}</span>}
               </button>
+              <div
+                onClick={() => setWebSearch(!webSearch)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 10px', borderRadius: '4px', cursor: 'pointer',
+                  background: webSearch ? 'rgba(59,130,246,0.1)' : 'transparent',
+                  border: '1px solid ' + (webSearch ? '#3b82f6' : '#27272a'),
+                  fontSize: '11px', color: webSearch ? '#60a5fa' : '#52525b',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{
+                  width: '24px', height: '14px', borderRadius: '7px',
+                  background: webSearch ? '#3b82f6' : '#27272a',
+                  position: 'relative', transition: 'background 0.2s', flexShrink: 0
+                }}>
+                  <div style={{
+                    width: '10px', height: '10px', borderRadius: '50%', background: '#fff',
+                    position: 'absolute', top: '2px',
+                    left: webSearch ? '12px' : '2px',
+                    transition: 'left 0.2s'
+                  }} />
+                </div>
+                Web Search
+              </div>
             </div>
 
             <div style={{ position: 'relative' }}>
