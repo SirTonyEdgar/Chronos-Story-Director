@@ -272,6 +272,8 @@ export default function SceneCreator({ profile }) {
   const [dateStr, setDateStr] = useState("");
   const [timeStr, setTimeStr] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [genStatus, setGenStatus] = useState(null);
+  const genPollRef = useRef(null);
   const [fogOfWar, setFogOfWar] = useState(false);
   const [povContext, setPovContext] = useState("");
 
@@ -408,7 +410,8 @@ export default function SceneCreator({ profile }) {
     if (!brief) return toast("Please provide a Scene Brief.", "warning");
     setDryRunResult(null);
     setIsGenerating(true);
-    // Check for upcoming spoilers near the scene date
+    setGenStatus(null);
+
     if (year || dateStr) {
       try {
         const warnRes = await axios.post(`${API_URL}/scene/spoiler_check/${profile}`, buildPayload());
@@ -417,6 +420,17 @@ export default function SceneCreator({ profile }) {
         setSpoilerWarnings([]);
       }
     }
+
+    // Start polling generation status
+    genPollRef.current = setInterval(async () => {
+      try {
+        const statusRes = await axios.get(`${API_URL}/scene/status/${profile}`);
+        if (statusRes.data.active) {
+          setGenStatus(statusRes.data);
+        }
+      } catch (err) { /* silent */ }
+    }, 1500);
+
     try {
       const res = await axios.post(`${API_URL}/scene/generate/${profile}`, buildPayload(overrideOutline));
       await refreshFileList();
@@ -428,7 +442,9 @@ export default function SceneCreator({ profile }) {
       console.error(err);
       toast("Generation failed: " + (err.response?.data?.detail || err.message), "error");
     } finally {
+      clearInterval(genPollRef.current);
       setIsGenerating(false);
+      setGenStatus(null);
     }
   };
 
@@ -819,7 +835,19 @@ export default function SceneCreator({ profile }) {
                 disabled={isGenerating || isDryRunning} 
                 style={{ ...styles.primaryButton, flex: 1 }}
               >
-                {isGenerating ? "Drafting Scene (This may take a minute)..." : <><Play size={16} /> Generate Scene</>}
+                {isGenerating ? (
+                  genStatus ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Loader2 size={16} className="spin" />
+                      Step {genStatus.step}/5 — {genStatus.step_name}: {genStatus.message}
+                    </span>
+                  ) : (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Loader2 size={16} className="spin" />
+                      Initializing...
+                    </span>
+                  )
+                ) : <><Play size={16} /> Generate Scene</>}
               </button>
             </div>
           </div>

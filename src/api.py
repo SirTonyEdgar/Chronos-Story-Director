@@ -206,6 +206,11 @@ def predict_next_chapter(profile: str):
     """Calculates the next available chapter number based on existing files."""
     return {"next_chapter": engine.get_next_chapter_number(profile)}
 
+@app.get("/scene/status/{profile}")
+def get_generation_status(profile: str):
+    """Returns current scene generation status for polling."""
+    return engine.get_generation_status(profile)
+
 @app.post("/scene/spoiler_check/{profile}")
 def check_scene_spoilers(profile: str, payload: SceneGenerationRequest):
     """

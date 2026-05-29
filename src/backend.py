@@ -86,6 +86,29 @@ class StoryState(TypedDict):
     pov_context: str
 
 # ==========================================
+# GENERATION STATUS TRACKER
+# ==========================================
+_generation_status: dict = {}
+
+def update_generation_status(profile: str, step: int, step_name: str, message: str):
+    """Updates the in-memory generation status for a profile."""
+    _generation_status[profile] = {
+        "step": step,
+        "total_steps": 5,
+        "step_name": step_name,
+        "message": message,
+        "active": True
+    }
+
+def clear_generation_status(profile: str):
+    """Clears the generation status for a profile."""
+    _generation_status[profile] = {"active": False}
+
+def get_generation_status(profile: str) -> dict:
+    """Returns the current generation status for a profile."""
+    return _generation_status.get(profile, {"active": False})
+
+# ==========================================
 # 1. API PROXY LAYER (Bridge to DB Manager)
 # ==========================================
 def get_paths(profile): return db.get_paths(profile)
@@ -958,6 +981,7 @@ def plan_scene(state: StoryState) -> dict:
     Workflow Node 1: The Director (Planner).
     Reads the heavy context (Lore, Rules, World State) and outputs a detailed Beat Sheet.
     """
+    update_generation_status(state['profile_name'], 1, "Planner", "Building scene structure and outline...")
     profile = state['profile_name']
     brief = state['scene_brief']
     current_timeline = state.get('timeline', '').strip()
@@ -1088,6 +1112,7 @@ def draft_scene(state: StoryState) -> dict:
     Workflow Node 2: Narrative Drafting (The Writer).
     Focuses 100% on writing beautiful prose based on the Planner's outline.
     """
+    update_generation_status(state['profile_name'], 2, "Drafter", "Writing prose from the approved outline...")
     profile = state['profile_name']
     brief = state['scene_brief']
     chapter = state.get('chapter_num')
@@ -1322,6 +1347,7 @@ def critique_scene(state: StoryState) -> dict:
     Workflow Node 3: Validation (The Continuity Editor).
     Rigorously checks the draft against World Rules, State, Banned Words, and the Outline.
     """
+    update_generation_status(state['profile_name'], 3, "Validator", "Checking continuity, consistency, and craft...")
     profile = state['profile_name']
 
     current_timeline = state.get('timeline', '').strip()
@@ -1392,6 +1418,7 @@ def enforce_style(state: StoryState) -> dict:
     Checks the validated draft against the user's Rulebook for style,
     register, vocabulary, and prose rhythm violations.
     """
+    update_generation_status(state['profile_name'], 4, "Style Enforcer", "Refining prose style and voice...")
     profile = state['profile_name']
     settings = db.get_story_settings(profile)
 
@@ -1443,6 +1470,7 @@ def check_voice_consistency(state: StoryState) -> dict:
     Workflow Node 5: Voice Consistency Check.
     Compares the current draft against the last 3 scenes for character voice consistency.
     """
+    update_generation_status(state['profile_name'], 5, "Voice Check", "Verifying character voices and authenticity...")
     profile = state['profile_name']
     settings = db.get_story_settings(profile)
 
@@ -1683,6 +1711,7 @@ def generate_scene(
     
     # 5. Execute AI Loop
     final_state = app.invoke(initial_input)
+    clear_generation_status(profile)
     
     # 6. Auto-Title & Persistence
     final_title = title
