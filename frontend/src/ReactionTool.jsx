@@ -59,6 +59,9 @@ export default function ReactionTool({ profile }) {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
 
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [pendingReaction, setPendingReaction] = useState(null);
+
   useEffect(() => {
     if (profile) {
       fetchFiles();
@@ -93,27 +96,54 @@ export default function ReactionTool({ profile }) {
     if (!faction) return toast("Please specify a Target Faction.", "warning");
     setLoading(true);
     setOutput("");
+    setPendingReaction(null);
     setActiveTab("output");
 
     const finalFormat = format === "Manual Input" ? customFormat : format;
     const stylePrompt = `${category} -> ${finalFormat}`;
 
     try {
-      const res = await axios.post(`${API_URL}/reaction/generate/${profile}`, {
+      const res = await axios.post(`${API_URL}/reaction/preview/${profile}`, {
         scene_file: selectedFile,
         faction: faction,
         format_style: stylePrompt,
         public_only: isPublic,
         custom_instructions: instructions,
-        timeline: timeline // <--- NEW: Passed to Backend!
+        timeline: timeline
       });
       setOutput(res.data.content);
-      fetchHistory();
+      setPendingReaction({
+        scene_file: selectedFile,
+        faction: faction,
+        reaction_text: res.data.content,
+        format_style: stylePrompt
+      });
+      setIsPreviewing(true);
     } catch (err) {
       toast("Error: " + (err.response?.data?.detail || err.message), "error");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCommit = async () => {
+    if (!pendingReaction) return;
+    try {
+      await axios.post(`${API_URL}/reaction/commit/${profile}`, pendingReaction);
+      toast("Reaction appended to scene.", "success");
+      setPendingReaction(null);
+      setIsPreviewing(false);
+      fetchHistory();
+    } catch (err) {
+      toast("Failed to commit: " + err.message, "error");
+    }
+  };
+
+  const handleDiscard = () => {
+    setPendingReaction(null);
+    setIsPreviewing(false);
+    setOutput("");
+    toast("Reaction discarded.", "info");
   };
 
   const handleUndo = async () => {
@@ -282,24 +312,39 @@ export default function ReactionTool({ profile }) {
           </label>
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-            <button 
-              onClick={handleSimulate} 
-              disabled={loading}
-              style={{ flex: 1, padding: '12px', background: '#a855f7', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-            >
-              {loading ? <RefreshCw className="spin" size={18}/> : <Send size={18}/>}
-              Simulate
-            </button>
-            
-            {/* UNDO BUTTON - Only renders if there is an active output on the screen */}
-            {output && (
-              <button 
-                onClick={handleUndo} 
-                title="Undo Last Memory & Text"
-                style={{ padding: '12px 20px', background: '#333', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            {!isPreviewing ? (
+              <button
+                onClick={handleSimulate}
+                disabled={loading}
+                style={{ flex: 1, padding: '12px', background: '#a855f7', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
               >
-                <Undo2 size={18}/>
+                {loading ? <RefreshCw className="spin" size={18}/> : <Send size={18}/>}
+                Simulate
               </button>
+            ) : (
+              <>
+                <button
+                  onClick={handleCommit}
+                  style={{ flex: 1, padding: '12px', background: '#22c55e', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  <Send size={18}/> Append to Scene
+                </button>
+                <button
+                  onClick={handleSimulate}
+                  disabled={loading}
+                  style={{ flex: 1, padding: '12px', background: '#a855f7', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  {loading ? <RefreshCw className="spin" size={18}/> : <RefreshCw size={18}/>}
+                  Regenerate
+                </button>
+                <button
+                  onClick={handleDiscard}
+                  style={{ padding: '12px 16px', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Discard this reaction"
+                >
+                  <X size={18}/>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -329,9 +374,16 @@ export default function ReactionTool({ profile }) {
             {/* TAB: OUTPUT */}
             {activeTab === 'output' && (
               output ? (
-                <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6', fontSize: '14px', color: '#e4e4e7' }}>
-                  {output}
-                </div>
+                <>
+                  {isPreviewing && (
+                    <div style={{ padding: '8px 14px', background: 'rgba(168,85,247,0.1)', border: '1px solid #7e22ce', borderRadius: '6px', marginBottom: '12px', fontSize: '12px', color: '#a855f7', fontWeight: '600' }}>
+                      ⚠️ Preview only — not yet saved. Append to Scene or Discard below.
+                    </div>
+                  )}
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6', fontSize: '14px', color: '#e4e4e7' }}>
+                    {output}
+                  </div>
+                </>
               ) : (
                 <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#333' }}>
                   <MessageCircle size={64} opacity={0.2} />

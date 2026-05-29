@@ -1210,8 +1210,52 @@ def draft_scene(state: StoryState) -> dict:
     === MISSION ===
     BRIEF: {state['scene_brief']}
     
-    INSTRUCTION: Write the full prose for this scene by expanding the APPROVED SCENE OUTLINE into engaging dialogue, sensory descriptions, and action. Ensure you strictly follow all rules and context provided above.
-    
+    INSTRUCTION: Write the full prose for this scene by expanding the APPROVED SCENE OUTLINE. You are not summarizing events — you are inhabiting them. The lore and world state are not documents to reference. They are the physics of the world you already live in. Write from inside that world, not about it.
+
+    *** CRAFT LAWS (NON-NEGOTIABLE) ***
+
+    COMMIT TO THE MOMENT:
+    - Every scene must have one clear purpose. If you cannot state in one sentence what this scene must accomplish, find it before writing a word.
+    - No atmospheric gesturing. No "the weight of the situation." Either you know what the thing is — say it directly — or it is genuinely unknown — say that and stop. There is no third option.
+    - Physical specificity carries tension. Name the object, the gesture, the exact word spoken. Vague impressionism is not mood — it is refusing to commit.
+
+    LORE IS PHYSICS, NOT DIALOGUE:
+    - Characters react to the material consequences of events, not to the events as abstract concepts.
+    - Characters do not explain the world to each other. They assume shared knowledge. Zero exposition dumping.
+    - No character recaps what the reader already knows. If a character references an event, they reference its consequence to them specifically.
+
+    INFORMATION ASYMMETRY:
+    - Every character knows only what their specific position in the world allows them to know.
+    - A character cannot reference, react to, or be shaped by something that hasn't happened yet or that they have no access to.
+    - Characters act from interest, not from narrative convenience.
+
+    AGENCY:
+    - Characters pursue goals. They do not wait for the plot to move them.
+    - Every character in the scene wants something specific. Their actions follow from that want, not from what the narrative needs to happen next.
+    - This applies to antagonists and secondary characters equally. No character exists merely to react to the protagonist.
+
+    INTERIORITY:
+    - Interiority must be earned and deployed sparingly. Ask of every moment of internal thought: does the exterior action already carry this? If yes, cut the interior statement.
+    - In action sequences: no interiority during the action. Only sensation and decision.
+    - In aftermath: interiority compressed into single images or gestures, not paragraphs.
+
+    DIALOGUE:
+    - Every line of dialogue must do at least two things simultaneously: advance the scene's purpose AND reveal character, establish relationship dynamic, conceal something, or deflect something.
+    - Before finalizing any line: could this line have been written by the author rather than spoken by this character? If yes, rewrite it.
+    - Characters do not speak to be helpful to the reader. They speak to get what they want.
+
+    DETAIL:
+    - Every specific detail must be load-bearing: it establishes physical reality, reveals character through what they notice, or foreshadows something.
+    - Decorative detail that does none of these must be cut.
+
+    PACING:
+    - Sentence length controls pace. Shorten sentences as tension rises. Long sentences create density and slow the reader.
+    - Read the scene aloud mentally — if the pacing feels wrong in the mouth it will feel wrong on the page.
+
+    FOURTH WALL:
+    - Do not reference document titles, file names, or story bible terminology within the scene.
+    - Characters exist in their world. The reader observes from outside it.
+
     CRITIQUE: {state['critique_notes']}
     """
     
@@ -1961,18 +2005,6 @@ def bulk_delete_files(profile: str, filenames: List[str]) -> int:
 # ==========================================
 # 5. CO-AUTHOR CHAT MODULE
 # ==========================================
-
-def get_chat_history(profile_name):
-    """Loads chat history from the database via the manager."""
-    return db.get_chat_history(profile_name)
-
-def save_chat_message(profile_name, role, content):
-    """Appends a message to the persistent chat log."""
-    db.save_chat_message(profile_name, role, content)
-
-def clear_chat_history(profile_name):
-    """Purges the chat history log."""
-    db.clear_chat_history(profile_name)
 
 def run_chat_query(profile_name: str, user_input: str, timeline: str = "",
                    mode: str = "free", attached_content: str = "",
@@ -2754,49 +2786,39 @@ def undo_last_reaction_text(profile_name, filename, faction):
 def delete_last_faction_reaction(profile, faction):
     db.delete_last_faction_reaction(profile, faction)
 
-def generate_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard", custom_instructions="", timeline=""):
+def preview_reaction_for_scene(profile_name, filename, faction, public_only=False, format_style="Standard", custom_instructions="", timeline=""):
     """
-    Simulates a faction's reaction (Adaptive Formats).
-    Includes 'Format Adaptation' to transmute anachronistic requests (e.g., 'Twitter' in 1200 AD -> 'Town Crier').
-    Respects Multiverse/Timeline isolation.
+    Generates a reaction preview without appending to the file or saving to the database.
+    Returns the reaction text for user review before committing.
     """
-    # 1. Alias Resolution (Uses local backend helper)
     true_faction = resolve_faction_alias(profile_name, faction)
-    print(f"  [Identity] Resolved '{faction}' -> '{true_faction}'")
-
-    # 2. Retrieve Global Context
     rules, plan, _ = get_global_context(profile_name, timeline)
     state = db.get_world_state(profile_name)
     content = db.read_file_content(profile_name, filename)
     settings = db.get_story_settings(profile_name)
-    
-    # 3. Era / Tech-Level Detection
+
     use_time = settings.get('use_time_system', 'true').lower() == 'true'
     era_display = "Undefined (Infer Tech Level from Lore)"
     if use_time and state.get('year', 0) > 0:
         era_display = f"{state['year']}"
 
-    # 4. Retrieve Faction Voice (DB Call)
     past_reactions = db.get_recent_faction_memory(profile_name, true_faction)
-    
-    # 5. Smart Retrieval (Context for the Faction)
+
     query = f"Faction '{true_faction}' reacting to scene content: {content[:3000]}..."
     relevant_ids = get_relevant_fragment_ids(
-        profile_name, 
-        user_query=query, 
+        profile_name,
+        user_query=query,
         doc_types=["Lore", "Fact", "Rulebook", "Scene", "Faction"],
         current_timeline=timeline,
         pov_context=""
     )
     smart_facts = db.get_content_by_ids(profile_name, relevant_ids)
-    
-    # 6. Content Sanitization (Fog of War)
+
     if public_only:
         pattern = r"\[\[PRIVATE\]\].*?\[\[/PRIVATE\]\]"
         content = re.sub(pattern, "[...INTERNAL/PRIVATE SCENE REDACTED...]", content, flags=re.DOTALL | re.IGNORECASE)
         content = re.sub(r"\[PRIVATE:.*?\]", "[REDACTED]", content)
 
-    # 7. Context Instruction Layer
     knowledge_instr = (
         "You are reading the unredacted scene. HOWEVER, act strictly as the Target Faction. "
         "DO NOT reference internal thoughts of others unless the provided Rules/Lore explicitly grant telepathic abilities. "
@@ -2812,28 +2834,25 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     if timeline:
         timeline_instruction = f"\n*** ACTIVE UNIVERSE: [{timeline}] ***\nReact strictly based on the history, tech, and facts of this specific timeline.\n"
 
-    # 7b. Faction Profile Retrieval
     faction_profile = ""
     faction_rows = db.get_fragments(profile_name, "Faction")
     for row in faction_rows:
         if true_faction.lower() in row[1].lower() or true_faction.lower() in row[2].lower():
             faction_profile = row[2]
-            print(f"  [Faction Profile] Found profile for '{true_faction}'")
             break
 
-    # 8. Prompt Construction (ADAPTIVE FORMATS)
     prompt = f"""
     ROLE: Narrative Simulator (Grounded in History & State).
     TARGET FACTION: {true_faction}
     CURRENT YEAR/ERA: {era_display}
     {timeline_instruction}
-    
+
     *** WORLD STATE & DATA ***
     Character Roster: {json.dumps(state.get('Cast', []))}
-    
+
     *** RELEVANT INTELLIGENCE (SMART RETRIEVAL) ***
     {smart_facts}
-    
+
     *** FACTION PROFILE (PRIMARY VOICE REFERENCE) ***
     {faction_profile if faction_profile else "No dedicated profile found. Infer voice from past reactions and world state."}
 
@@ -2841,36 +2860,70 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
     {past_reactions if past_reactions else "No prior reactions on record. This is the first reaction from this faction."}
 
     *** MISSION ***
-    Write a reaction to the SCENE provided below.
+    Write a reaction to the SCENE provided below. You are not summarizing what happened. You are generating the specific, partial, self-interested response of this specific entity at this specific moment based on what they know and what they want.
 
     *** FORMAT ADAPTATION PROTOCOL (CRITICAL) ***
     Requested Format: "{format_style}"
-    
+
     INSTRUCTION: You must check if the Requested Format exists in the Current Era ({era_display}).
     1. IF COMPATIBLE: Use the format as requested (e.g. "Newspaper" in 1920).
     2. IF ANACHRONISTIC: Transmute the format to the closest era-appropriate equivalent.
-       - Example: User asks for "Twitter/X" in 1200 AD -> You write "Tavern Gossip" or "Town Square Shouting."
-       - Example: User asks for "Newspaper" in 2200 AD -> You write "Holographic News Feed."
-       - Example: User asks for "Boardroom Meeting" for a Gang -> You write "Backroom Deal."
-    
+
     *** HIERARCHY OF TRUTH ***
     1. LORE PRIORITY: If Lore says "Telepathy exists," then "Mental Chat" is a valid format.
-    2. REALISM: Use real-world logic for the Era to determine how news travels (Horse? Telegraph? Subspace?).
+    2. REALISM: Use real-world logic for the Era to determine how news travels.
+
+    *** REACTION CRAFT LAWS (NON-NEGOTIABLE) ***
+
+    VOICE AUTHENTICITY:
+    - Before writing any line, ask: could this sentence have been written in a neutral analytical register rather than spoken by this specific entity? If yes, rewrite it until the answer is no.
+    - The test is not whether the content is correct for the character — it is whether the specific words, rhythm, and construction belong to that character and not to the author.
+    - Voice containment is absolute. Never cross-contaminate registers. A politician cares about polling, donors, and institutional power. A street-level operative thinks in logistics and threat assessment. A bureaucrat speaks in passive constructions and hedged language. Each voice is a closed system.
+
+    INFORMATION ASYMMETRY:
+    - This faction knows only what their specific position allows them to know.
+    - They do not have omniscient knowledge of events they could not have witnessed or learned through their specific channels.
+    - They react to what breached their awareness, not to the full event as the reader knows it.
+
+    LORE IS PHYSICS, NOT DIALOGUE:
+    - React to the material consequences of the scene — loss of funding, shift in power, new threat, physical destruction.
+    - Do not recite or reference the scene's events as abstract concepts. React to what those events mean for this faction's specific interests.
+
+    NO RESOLUTION (DEFAULT — overridable via Additional Instructions):
+    - Unless instructed otherwise, real reactions do not conclude in consensus or neat summation.
+    - If there is internal disagreement, it remains unresolved at the end. Characters repeat themselves with increasing intensity. They talk past each other. They run out of steam without concluding.
+    - A character saying "fair point" and the argument ending is almost always false. Let disagreements remain disagreements.
+
+    DRIFT:
+    - Real conversations do not stay on topic. Allow natural drift — one thing becomes adjacent, then further, then circles back or doesn't.
+    - Emotional register shifts without announcement: serious analysis, then a one-word dismissal, then something unexpectedly personal, then back.
+    - Do not maintain a consistent tone across the entire reaction.
+
+    NO RECAP:
+    - Do not start by summarizing what happened. Jump directly into the reaction already in progress.
+    - No character recaps events the others already know. They argue about those events, dispute them, feel things about them.
+
+    BOTH BAN:
+    - The word "both" used as a conclusion is banned. Noticing that two things are simultaneously true is not a thought — it is the beginning of a thought that was not finished.
+    - If there is a tension, the character argues with it, feels something about it, or goes somewhere new with it.
+
+    FOURTH WALL:
+    - Do not reference document titles, file names, or story bible terminology.
+    - Characters respond to what exists in their world.
 
     *** ADDITIONAL INSTRUCTIONS ***
-    {custom_instructions if custom_instructions else "Follow standard personality and lore."}
-    
+    {custom_instructions if custom_instructions else "Follow standard personality and lore. To direct a specific outcome — a concession, a pivot, a change in position — state it here explicitly."}
+
     *** KNOWLEDGE CONSTRAINTS ***
     {knowledge_instr}
-    
+
     *** SCENE CONTEXT ***
     {content}
     """
-    
+
     llm = get_llm(profile_name, "reaction")
     res = llm.invoke([HumanMessage(content=prompt)]).content
-    
-    # 9a. Consistency Validation
+
     if past_reactions and faction_profile:
         consistency_prompt = f"""
         ROLE: Continuity Editor.
@@ -2897,34 +2950,37 @@ def generate_reaction_for_scene(profile_name, filename, faction, public_only=Fal
             consistency_llm = get_llm(profile_name, "validator")
             consistency_check = consistency_llm.invoke([HumanMessage(content=consistency_prompt)]).content.strip()
             if consistency_check.startswith("INCONSISTENT"):
-                print(f"  [Consistency Warning] {consistency_check}")
-                # Append warning to the reaction so the user can see it in the UI
                 res = res + f"\n\n⚠️ CONSISTENCY WARNING: {consistency_check.replace('INCONSISTENT:', '').strip()}"
         except Exception as e:
             print(f"  [Consistency Check Error] {e}")
 
-    if "REFUSAL" in res: return False, res
+    if "REFUSAL" in res:
+        return False, res
 
-    # 9. Save to Memory (DB)
-    db.save_faction_reaction(profile_name, true_faction, res, filename)
+    return True, res
 
-    # 10. Append to File
+def commit_reaction_to_scene(profile_name: str, filename: str, faction: str,
+                              reaction_text: str, format_style: str = "Standard"):
+    """
+    Appends a previewed reaction to the scene file and saves it to the database.
+    Called only after user confirms the preview.
+    """
+    true_faction = resolve_faction_alias(profile_name, faction)
+    db.save_faction_reaction(profile_name, true_faction, reaction_text, filename)
+
     paths = db.get_paths(profile_name)
     clean_style = format_style.split("->")[-1].strip()
     header = f"\n\n>>> REACTION: {true_faction} | {clean_style} <<<\n"
-    
     full_filepath = os.path.join(paths['output'], filename)
-    
-    with open(full_filepath, "a", encoding="utf-8") as f:
-        f.write(header + res + "\n")
 
-    # 11. Sync to database
+    with open(full_filepath, "a", encoding="utf-8") as f:
+        f.write(header + reaction_text + "\n")
+
     with open(full_filepath, "r", encoding="utf-8") as f:
         full_updated_content = f.read()
-        
+
     db.upsert_scene(profile_name, filename, full_updated_content)
-        
-    return True, res
+    return True
 
 # ==========================================
 # 11. COMPILER MODULE

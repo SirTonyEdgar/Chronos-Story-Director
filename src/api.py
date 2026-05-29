@@ -806,25 +806,6 @@ def save_graph_positions(profile: str, payload: GraphUpdate):
 # 7. 🗣️ REACTION TOOL MODULE
 # ==========================================
 
-@app.post("/reaction/generate/{profile}")
-def generate_faction_reaction(profile: str, payload: ReactionRequest):
-    """Generates a faction response to a scene."""
-    try:
-        success, result = engine.generate_reaction_for_scene(
-            profile, 
-            payload.scene_file, 
-            payload.faction, 
-            public_only=payload.public_only, 
-            format_style=payload.format_style,
-            custom_instructions=payload.custom_instructions,
-            timeline=payload.timeline
-        )
-        if not success:
-            raise HTTPException(status_code=400, detail=result)
-        return {"status": "Success", "content": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/reaction/history/{profile}")
 def get_all_reactions(profile: str):
     """Fetches all past faction reactions from the database."""
@@ -869,6 +850,39 @@ def undo_last_reaction(profile: str, payload: UndoReactionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/reaction/preview/{profile}")
+def preview_reaction(profile: str, payload: ReactionRequest):
+    """
+    Generates a reaction preview without writing to the file or database.
+    Returns text for user review before committing.
+    """
+    try:
+        success, content = engine.preview_reaction_for_scene(
+            profile, payload.scene_file, payload.faction,
+            payload.public_only, payload.format_style,
+            payload.custom_instructions, payload.timeline
+        )
+        return {"success": success, "content": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/reaction/commit/{profile}")
+def commit_reaction(profile: str, payload: dict):
+    """
+    Commits a previewed reaction to the scene file and database.
+    Called only after user confirms the preview.
+    """
+    try:
+        engine.commit_reaction_to_scene(
+            profile,
+            payload.get("scene_file"),
+            payload.get("faction"),
+            payload.get("reaction_text"),
+            payload.get("format_style", "Standard")
+        )
+        return {"status": "Committed"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
 # 8. 📚 COMPILER MODULE
