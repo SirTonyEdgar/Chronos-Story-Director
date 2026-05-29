@@ -457,6 +457,8 @@ def get_relevant_fragment_ids(profile_name, user_query, doc_types=None, current_
     for r in rows:
         if doc_types and r[3] not in doc_types:
             continue
+        if r[3] == "Reference":
+            continue  # Reference fragments injected separately, not via Librarian
         meta_text = ""
         if len(r) > 4 and r[4]:
             clean_meta = r[4].replace('\n', ' ')
@@ -1051,6 +1053,36 @@ def plan_scene(state: StoryState) -> dict:
         "retrieved_ids": relevant_ids
     }
 
+def get_reference_context(profile_name: str) -> tuple[str, str]:
+    """
+    Fetches Reference fragments split into Style and World sub-types.
+    Style references are identified by title starting with [Style] or type tag in metadata.
+    World references are everything else in the Reference category.
+    Returns (style_block, world_block) as formatted strings.
+    """
+    ref_rows = db.get_fragments(profile_name, "Reference")
+    if not ref_rows:
+        return "", ""
+
+    style_refs = []
+    world_refs = []
+
+    for r in ref_rows:
+        name = r[1] or ""
+        content = r[2] or ""
+        if not content.strip():
+            continue
+        # Classify by name prefix or metadata tag
+        if name.lower().startswith("[style]") or "[style]" in (r[4] or "").lower():
+            style_refs.append(f"--- {name} ---\n{content[:2000]}")
+        else:
+            world_refs.append(f"--- {name} ---\n{content[:2000]}")
+
+    style_block = "\n\n".join(style_refs) if style_refs else ""
+    world_block = "\n\n".join(world_refs) if world_refs else ""
+
+    return style_block, world_block
+
 def draft_scene(state: StoryState) -> dict:
     """
     Workflow Node 2: Narrative Drafting (The Writer).
@@ -1081,6 +1113,9 @@ def draft_scene(state: StoryState) -> dict:
     smart_context_str = db.get_content_by_ids(profile, relevant_ids)
     if not smart_context_str:
         smart_context_str = "No specific historical records found for this scene."
+
+    # Reference Context — style and world texture references
+    style_refs, world_refs = get_reference_context(profile)
 
     # 3. Header & Continuity Logic
     #    If this is Part 2+, fetch the text of previous parts to ensure flow.
@@ -1183,6 +1218,9 @@ def draft_scene(state: StoryState) -> dict:
     {privacy_protocol}
     {variables_section}
     
+    {f"*** STYLE REFERENCE (PROSE RHYTHM & VOICE) ***\n{style_refs}\n" if style_refs else ""}
+    {f"*** WORLD TEXTURE REFERENCE (REAL-WORLD MECHANICS) ***\n{world_refs}\n" if world_refs else ""}
+
     *** STRATEGIC PLAN ***
     {plan}
 
@@ -2813,6 +2851,7 @@ def preview_reaction_for_scene(profile_name, filename, faction, public_only=Fals
         pov_context=""
     )
     smart_facts = db.get_content_by_ids(profile_name, relevant_ids)
+    style_refs, world_refs = get_reference_context(profile_name)
 
     if public_only:
         pattern = r"\[\[PRIVATE\]\].*?\[\[/PRIVATE\]\]"
@@ -2855,6 +2894,9 @@ def preview_reaction_for_scene(profile_name, filename, faction, public_only=Fals
 
     *** FACTION PROFILE (PRIMARY VOICE REFERENCE) ***
     {faction_profile if faction_profile else "No dedicated profile found. Infer voice from past reactions and world state."}
+
+    {f"*** STYLE REFERENCE ***\n{style_refs}\n" if style_refs else ""}
+    {f"*** WORLD TEXTURE REFERENCE ***\n{world_refs}\n" if world_refs else ""}
 
     *** PAST REACTIONS (VOICE EVOLUTION) ***
     {past_reactions if past_reactions else "No prior reactions on record. This is the first reaction from this faction."}
