@@ -465,6 +465,31 @@ export default function SharedEditor({ profile, category, icon, color, descripti
                 <Edit2 size={14} color="#666" />
               </div>
             )}
+            {category === "Reference" && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <button
+                  onClick={() => {
+                    if (editTitle.startsWith('[Style] ')) {
+                      setEditTitle(editTitle.replace('[Style] ', ''));
+                    } else {
+                      setEditTitle('[Style] ' + editTitle);
+                    }
+                  }}
+                  style={{
+                    padding: '3px 10px', fontSize: '11px', borderRadius: '4px', cursor: 'pointer',
+                    background: editTitle.startsWith('[Style]') ? 'rgba(6,182,212,0.15)' : 'transparent',
+                    border: '1px solid ' + (editTitle.startsWith('[Style]') ? '#06b6d4' : '#3f3f46'),
+                    color: editTitle.startsWith('[Style]') ? '#06b6d4' : '#52525b',
+                    fontWeight: '600'
+                  }}
+                >
+                  {editTitle.startsWith('[Style]') ? '✓ Style Reference' : 'Mark as Style Reference'}
+                </button>
+                <span style={{ fontSize: '11px', color: '#3f3f46' }}>
+                  {editTitle.startsWith('[Style]') ? 'Prose/voice example — injected as writing guide' : 'World reference — injected as factual grounding'}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* NEW: Custom Sleek Timeline Dropdown */}

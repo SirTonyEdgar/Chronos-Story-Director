@@ -9,7 +9,7 @@ export default function ReferenceTab({ profile }) {
       category="Reference"
       icon={<BookMarked />}
       color="#06b6d4"
-      description="📚 Reference Material: Style references (prose examples, voice samples, tonal guides) and world texture references (real-world mechanics, period-accurate detail, domain knowledge). These inform how the AI writes and what it knows about how things actually work."
+      description="📚 Reference Material: Two types — Style references teach the AI how to write (prose rhythm, voice, tone), World references teach it how things work (real-world mechanics, period detail, domain knowledge). To mark a reference as a Style reference, start the title with [Style] — e.g. '[Style] McCarthy sparse prose'. Everything else is treated as a World reference."
       placeholder="e.g. Paste a McCarthy paragraph for prose rhythm reference, or describe how 1930s naval intelligence actually communicated..."
     />
   );
