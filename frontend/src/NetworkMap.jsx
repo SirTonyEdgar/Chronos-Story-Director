@@ -1,3 +1,4 @@
+import { TimelineDropdown } from './components/SharedComponents';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactFlow, { 
   useNodesState, 
@@ -16,7 +17,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import axios from 'axios';
-import { Save, ArrowDown, ArrowRight, CircleDot, ZoomIn, ZoomOut, Maximize, Layers, Eye, EyeOff, Zap } from 'lucide-react';
+import { Save, ArrowDown, ArrowRight, CircleDot, ZoomIn, ZoomOut, Maximize, Layers, Eye, EyeOff } from 'lucide-react';
 import dagre from 'dagre';
 import { API_URL } from './config';
 import { toast, confirm } from './components/Notifications';
@@ -594,18 +595,12 @@ function GraphEditor({ profile }) {
         {availableTimelines.length > 0 && (
           <>
             <div style={{width: '1px', background: '#444', margin: '0 5px'}}></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: activeTimeline ? 'rgba(168,85,247,0.15)' : 'transparent', border: '1px solid ' + (activeTimeline ? '#a855f7' : '#444'), padding: '4px 10px', borderRadius: '4px' }}>
-              <Zap size={13} color="#a855f7" />
-              <select
+            <div style={{ width: '200px' }}>
+              <TimelineDropdown
                 value={activeTimeline}
-                onChange={e => setActiveTimeline(e.target.value)}
-                style={{ background: 'transparent', border: 'none', color: '#e4e4e7', outline: 'none', fontSize: '12px', cursor: 'pointer' }}
-              >
-                <option value="">All Timelines</option>
-                {availableTimelines.map((tl, i) => (
-                  <option key={i} value={tl.Name}>{tl.Name}</option>
-                ))}
-              </select>
+                onChange={setActiveTimeline}
+                timelines={availableTimelines}
+              />
             </div>
           </>
         )}
