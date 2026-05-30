@@ -354,6 +354,21 @@ export default function CharacterManagerTab({ state, setState, profile }) {
                       </select>
                     </div>
 
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={styles.label}>NETWORK RING</label>
+                      <select
+                        style={styles.input}
+                        value={activeChar.Ring || ""}
+                        onChange={e => updateCharacter("Ring", e.target.value)}
+                      >
+                        <option value="">Auto (keyword match)</option>
+                        <option value="personal">Personal — innermost ring</option>
+                        <option value="allies">Allies — second ring</option>
+                        <option value="assets">Assets — third ring</option>
+                        <option value="hostile">Hostile — outermost ring</option>
+                      </select>
+                    </div>
+
                     <div>
                       <label style={styles.label}>DIRECT CONNECTIONS</label>
                       

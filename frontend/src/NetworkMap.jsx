@@ -304,6 +304,14 @@ const getIsolatedRippleLayout = (nodes, edges) => {
     };
 
     sys.satellites.forEach(node => {
+      // Explicit ring assignment takes priority over keyword guessing
+      const explicitRing = (node.data.ring || "").toLowerCase();
+      if (explicitRing === "personal") { rings.personal.push(node); return; }
+      if (explicitRing === "hostile")  { rings.hostile.push(node);  return; }
+      if (explicitRing === "allies")   { rings.allies.push(node);   return; }
+      if (explicitRing === "assets")   { rings.assets.push(node);   return; }
+
+      // Fallback: keyword matching for unassigned nodes
       const edge = edges.find(e => 
         (e.source === sys.sun.id && e.target === node.id) || 
         (e.target === sys.sun.id && e.source === node.id)
