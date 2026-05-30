@@ -483,6 +483,7 @@ export default function SceneCreator({ profile }) {
     setGenerationLog(null);
     setDiffData(null);
     setShowDiff(false);
+    setRevealsPassed([]);
     try {
       const res = await axios.get(`${API_URL}/file/${profile}/${filename}`);
       setFileContent(res.data.content);
@@ -490,6 +491,17 @@ export default function SceneCreator({ profile }) {
       setConsequences(null);
       setShowConsequences(false);
       fetchDiff(filename);
+
+      // Run reveal check if date context is available
+      if (year || dateStr) {
+        try {
+          const revealRes = await axios.get(
+            `${API_URL}/scene/reveal_check/${profile}`,
+            { params: { scene_year: year || 0, scene_date: dateStr || "" } }
+          );
+          setRevealsPassed(revealRes.data.reveals || []);
+        } catch (err) { /* silent */ }
+      }
     } catch (err) { toast("Failed to load file content.", "error"); }
   };
 
