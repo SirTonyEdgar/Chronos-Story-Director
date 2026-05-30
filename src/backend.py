@@ -3284,7 +3284,8 @@ def generate_network_graph(profile: str):
                 "icon": char.get("Icon", "Neutral"),
                 "category": category,
                 "role": char.get("Role", "Support"),
-                "orbit": char.get("Orbit", None)
+                "orbit": char.get("Orbit", None),
+                "timeline": char.get("Timeline", "")
             },
             # Default pos (Frontend will auto-arrange)
             "position": char.get("ui_pos", {"x": 0, "y": 0}) 

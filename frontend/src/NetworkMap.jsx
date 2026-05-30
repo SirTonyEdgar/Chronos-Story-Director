@@ -16,7 +16,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import axios from 'axios';
-import { Save, ArrowDown, ArrowRight, CircleDot, ZoomIn, ZoomOut, Maximize, Layers, Eye, EyeOff } from 'lucide-react';
+import { Save, ArrowDown, ArrowRight, CircleDot, ZoomIn, ZoomOut, Maximize, Layers, Eye, EyeOff, Zap } from 'lucide-react';
 import dagre from 'dagre';
 import { API_URL } from './config';
 import { toast, confirm } from './components/Notifications';
@@ -377,6 +377,8 @@ function GraphEditor({ profile }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [showAssets, setShowAssets] = useState(true);
+  const [activeTimeline, setActiveTimeline] = useState("");
+  const [availableTimelines, setAvailableTimelines] = useState([]);
   const allNodesRef = React.useRef([]);
   const { fitView, zoomIn, zoomOut } = useReactFlow();
 
@@ -392,14 +394,29 @@ function GraphEditor({ profile }) {
 
   useEffect(() => {
     if (allNodesRef.current.length === 0) return;
-    if (showAssets) {
-      setNodes(allNodesRef.current);
-    } else {
-      setNodes(allNodesRef.current.filter(n =>
+    let filtered = allNodesRef.current;
+
+    if (!showAssets) {
+      filtered = filtered.filter(n =>
         n.data.category !== 'Asset' && n.data.category !== 'asset'
-      ));
+      );
     }
-  }, [showAssets]);
+
+    if (activeTimeline) {
+      filtered = filtered.map(n => {
+        const nodeTimeline = n.data.timeline || "";
+        const isUniversal = !nodeTimeline;
+        const matchesTimeline = nodeTimeline === activeTimeline;
+        if (isUniversal || matchesTimeline) {
+          return { ...n, style: { ...n.style, opacity: 1 } };
+        } else {
+          return { ...n, style: { ...n.style, opacity: 0.2 } };
+        }
+      });
+    }
+
+    setNodes(filtered);
+  }, [showAssets, activeTimeline]);
 
   async function fetchData() {
     try {
@@ -410,6 +427,13 @@ function GraphEditor({ profile }) {
       }));
 
       allNodesRef.current = safeNodes;
+
+      // Fetch available timelines from world state
+      try {
+        const stateRes = await axios.get(`${API_URL}/state/${profile}`);
+        setAvailableTimelines(stateRes.data.Timelines || []);
+      } catch (err) { /* silent */ }
+
       setNodes(safeNodes);
       
       const arrowEdges = res.data.edges.map(edge => ({
@@ -489,6 +513,25 @@ function GraphEditor({ profile }) {
         <button onClick={() => zoomIn()} style={iconBtnStyle} title="Zoom In"><ZoomIn size={18} /></button>
         <button onClick={() => zoomOut()} style={iconBtnStyle} title="Zoom Out"><ZoomOut size={18} /></button>
         <button onClick={() => fitView()} style={iconBtnStyle} title="Fit to Screen"><Maximize size={18} /></button>
+
+        {availableTimelines.length > 0 && (
+          <>
+            <div style={{width: '1px', background: '#444', margin: '0 5px'}}></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: activeTimeline ? 'rgba(168,85,247,0.15)' : 'transparent', border: '1px solid ' + (activeTimeline ? '#a855f7' : '#444'), padding: '4px 10px', borderRadius: '4px' }}>
+              <Zap size={13} color="#a855f7" />
+              <select
+                value={activeTimeline}
+                onChange={e => setActiveTimeline(e.target.value)}
+                style={{ background: 'transparent', border: 'none', color: '#e4e4e7', outline: 'none', fontSize: '12px', cursor: 'pointer' }}
+              >
+                <option value="">All Timelines</option>
+                {availableTimelines.map((tl, i) => (
+                  <option key={i} value={tl.Name}>{tl.Name}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
 
         <div style={{width: '1px', background: '#444', margin: '0 5px'}}></div>
         <button
