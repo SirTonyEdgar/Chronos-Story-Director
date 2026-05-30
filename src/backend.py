@@ -2645,6 +2645,26 @@ def run_war_room_simulation(profile, action_input, timeline=""):
     *** PROPOSED ACTION ***
     "{action_input}"
     
+    *** SIMULATION CRAFT LAWS ***
+
+    AGENCY:
+    - Every faction and actor in this simulation pursues their own goals. They do not exist to validate or oppose the proposed action — they respond to it from their own interests.
+    - Model each faction's reaction from what they want, what they fear, and what they know. Not from what would make a satisfying narrative.
+
+    INFORMATION ASYMMETRY:
+    - Each faction knows only what their specific position allows them to know.
+    - Do not give factions knowledge of events, capabilities, or intentions they could not have learned through their actual channels.
+    - A street-level faction does not know what is happening in a government briefing room unless that information has visibly leaked.
+
+    LORE IS PHYSICS, NOT ABSTRACTION:
+    - Simulate material consequences — loss of territory, funding, personnel, credibility, physical infrastructure.
+    - Do not describe factions as "displeased" or "alarmed." Describe what they actually do: pull funding, mobilize assets, leak information, accelerate timelines, eliminate threats.
+
+    NO CLEAN RESOLUTION:
+    - Real consequences are messy, partial, and contested. Do not resolve tensions neatly.
+    - If two factions would realistically have conflicting responses, show both responses without resolving the contradiction.
+    - Probability of success is never 0% or 100% unless the World Rules make it physically impossible.
+
     *** MISSION ***
     Simulate the consequences of this action based on the World Rules.
     Do not write a story. Write a CAUSALITY REPORT.
@@ -2727,6 +2747,26 @@ def run_war_room_with_search(profile: str, action_input: str, timeline: str = ""
 
     *** PROPOSED ACTION ***
     "{action_input}"
+
+    *** SIMULATION CRAFT LAWS ***
+
+    AGENCY:
+    - Every faction and actor in this simulation pursues their own goals. They do not exist to validate or oppose the proposed action — they respond to it from their own interests.
+    - Model each faction's reaction from what they want, what they fear, and what they know. Not from what would make a satisfying narrative.
+
+    INFORMATION ASYMMETRY:
+    - Each faction knows only what their specific position allows them to know.
+    - Do not give factions knowledge of events, capabilities, or intentions they could not have learned through their actual channels.
+    - A street-level faction does not know what is happening in a government briefing room unless that information has visibly leaked.
+
+    LORE IS PHYSICS, NOT ABSTRACTION:
+    - Simulate material consequences — loss of territory, funding, personnel, credibility, physical infrastructure.
+    - Do not describe factions as "displeased" or "alarmed." Describe what they actually do: pull funding, mobilize assets, leak information, accelerate timelines, eliminate threats.
+
+    NO CLEAN RESOLUTION:
+    - Real consequences are messy, partial, and contested. Do not resolve tensions neatly.
+    - If two factions would realistically have conflicting responses, show both responses without resolving the contradiction.
+    - Probability of success is never 0% or 100% unless the World Rules make it physically impossible.
 
     *** MISSION ***
     Simulate the consequences of this action. You have access to web search — use it to ground your analysis in real-world facts, historical precedents, and current events where relevant. Search for specific data points that would affect the simulation's accuracy.

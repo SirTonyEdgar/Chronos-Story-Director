@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import { Swords, Save, Play, AlertTriangle, ShieldAlert, FileText, X } from 'lucide-react';
+import { Swords, Save, Play, AlertTriangle, ShieldAlert, FileText, X, Zap } from 'lucide-react';
 import { API_URL } from './config';
 import { toast, confirm } from './components/Notifications';
 
@@ -13,6 +13,16 @@ export default function WarRoom({ profile }) {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [planName, setPlanName] = useState("");
   const [webSearch, setWebSearch] = useState(false);
+  const [timeline, setTimeline] = useState("");
+  const [availableTimelines, setAvailableTimelines] = useState([]);
+
+  useEffect(() => {
+    if (profile) {
+      axios.get(`${API_URL}/state/${profile}`)
+        .then(res => setAvailableTimelines(res.data.Timelines || []))
+        .catch(() => {});
+    }
+  }, [profile]);
 
   const handleRun = async () => {
     if (!scenario) return toast("Please define a scenario first.", "warning");
@@ -22,7 +32,8 @@ export default function WarRoom({ profile }) {
     try {
       const res = await axios.post(`${API_URL}/warroom/${profile}`, {
         scenario: scenario,
-        web_search: webSearch
+        web_search: webSearch,
+        timeline: timeline
       });
       setReport(res.data.report);
     } catch (err) {
@@ -122,6 +133,22 @@ export default function WarRoom({ profile }) {
             />
           </div>
 
+          {availableTimelines.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(168,85,247,0.1)', border: '1px solid #a855f7', padding: '8px 12px', borderRadius: '6px' }}>
+              <Zap size={14} color="#a855f7" />
+              <select
+                value={timeline}
+                onChange={e => setTimeline(e.target.value)}
+                style={{ background: 'transparent', border: 'none', color: '#e4e4e7', outline: 'none', fontSize: '12px', cursor: 'pointer', flex: 1 }}
+              >
+                <option value="">Universal (All Timelines)</option>
+                {availableTimelines.map((tl, i) => (
+                  <option key={i} value={tl.Name}>{tl.Name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div
             onClick={() => setWebSearch(!webSearch)}
             style={{
@@ -181,9 +208,10 @@ export default function WarRoom({ profile }) {
               <AlertTriangle size={14} /> System Logic
             </div>
             <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '12px', color: '#a1a1aa', lineHeight: '1.6' }}>
-              <li>Cross-references <b>Allies</b> & <b>Assets</b>.</li>
-              <li>Checks <b>Skills</b> for competency.</li>
-              <li>Calculates <b>Betrayal Risks</b>.</li>
+              <li>Retrieves relevant <b>Lore, Facts & Rules</b> via Librarian.</li>
+              <li>Reads <b>Cast, Assets & Skills</b> from World State.</li>
+              <li>Applies <b>Agency & Information Asymmetry</b> laws.</li>
+              <li>Simulates <b>material consequences</b>, not abstractions.</li>
             </ul>
           </div>
         </div>
