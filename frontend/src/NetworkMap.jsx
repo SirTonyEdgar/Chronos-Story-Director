@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactFlow, { 
   useNodesState, 
   useEdgesState, 
@@ -16,7 +16,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import axios from 'axios';
-import { Save, ArrowDown, ArrowRight, CircleDot, ZoomIn, ZoomOut, Maximize, Layers } from 'lucide-react';
+import { Save, ArrowDown, ArrowRight, CircleDot, ZoomIn, ZoomOut, Maximize, Layers, Eye, EyeOff } from 'lucide-react';
 import dagre from 'dagre';
 import { API_URL } from './config';
 import { toast, confirm } from './components/Notifications';
@@ -152,9 +152,9 @@ const EdgeLabel = ({ label, x, y }) => (
         position: 'absolute',
         transform: `translate(-50%, -50%) translate(${x}px,${y}px)`,
         background: '#09090b', padding: '6px 12px', borderRadius: '4px',
-        fontSize: '24px', fontWeight: 700, color: '#e4e4e7', border: '1px solid #444',
+        fontSize: '13px', fontWeight: 600, color: '#e4e4e7', border: '1px solid #333',
         pointerEvents: 'none', zIndex: 1002, whiteSpace: 'nowrap',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.8)'
+        boxShadow: '0 2px 4px rgba(0,0,0,0.8)', letterSpacing: '0.2px'
       }}>
       {label}
     </div>
@@ -376,6 +376,8 @@ const getSmartEdges = (nodes, edges, mode) => {
 function GraphEditor({ profile }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [showAssets, setShowAssets] = useState(true);
+  const allNodesRef = React.useRef([]);
   const { fitView, zoomIn, zoomOut } = useReactFlow();
 
   const nodeTypes = useMemo(() => ({ customNode: CustomNode }), []);
@@ -384,9 +386,20 @@ function GraphEditor({ profile }) {
     smartBezier: SmartBezierEdge
   }), []);
 
-  useEffect(() => { 
-    if (profile) fetchData(); 
+  useEffect(() => {
+    if (profile) fetchData();
   }, [profile]);
+
+  useEffect(() => {
+    if (allNodesRef.current.length === 0) return;
+    if (showAssets) {
+      setNodes(allNodesRef.current);
+    } else {
+      setNodes(allNodesRef.current.filter(n =>
+        n.data.category !== 'Asset' && n.data.category !== 'asset'
+      ));
+    }
+  }, [showAssets]);
 
   async function fetchData() {
     try {
@@ -396,6 +409,7 @@ function GraphEditor({ profile }) {
         position: { x: Number(n.position?.x) || 0, y: Number(n.position?.y) || 0 }
       }));
 
+      allNodesRef.current = safeNodes;
       setNodes(safeNodes);
       
       const arrowEdges = res.data.edges.map(edge => ({
@@ -476,6 +490,14 @@ function GraphEditor({ profile }) {
         <button onClick={() => zoomOut()} style={iconBtnStyle} title="Zoom Out"><ZoomOut size={18} /></button>
         <button onClick={() => fitView()} style={iconBtnStyle} title="Fit to Screen"><Maximize size={18} /></button>
 
+        <div style={{width: '1px', background: '#444', margin: '0 5px'}}></div>
+        <button
+          onClick={() => setShowAssets(!showAssets)}
+          style={{ ...iconBtnStyle, background: showAssets ? '#333' : '#1a2a1a', color: showAssets ? '#ccc' : '#4ade80' }}
+          title={showAssets ? "Hide Assets" : "Show Assets"}
+        >
+          {showAssets ? <Eye size={18} /> : <EyeOff size={18} />}
+        </button>
         <div style={{width: '1px', background: '#444', margin: '0 5px'}}></div>
         <button onClick={savePositions} style={saveBtnStyle}><Save size={16} /> Save</button>
       </div>
