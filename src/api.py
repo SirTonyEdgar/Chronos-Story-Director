@@ -860,6 +860,19 @@ def save_graph_positions(profile: str, payload: GraphUpdate):
     engine.save_world_state(profile, state)
     return {"status": "Positions Saved"}
 
+@app.post("/graph/{profile}/edge_label")
+def update_edge_label(profile: str, payload: dict):
+    """Updates a relationship label between two cast members."""
+    try:
+        engine.update_character_link_label(
+            profile,
+            payload.get("source_id"),
+            payload.get("target_id"),
+            payload.get("label", "")
+        )
+        return {"status": "Updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
 # 7. 🗣️ REACTION TOOL MODULE

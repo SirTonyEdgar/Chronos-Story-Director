@@ -3335,6 +3335,25 @@ def generate_network_graph(profile: str):
 
     return {"nodes": nodes, "edges": edges}
 
+def update_character_link_label(profile: str, source_id: str, target_id: str, new_label: str):
+    """
+    Updates the relationship label between two cast members in the World State.
+    """
+    state = db.get_world_state(profile)
+    cast = state.get("Cast", [])
+    
+    for char in cast:
+        if char["id"] == source_id:
+            links = char.get("Links", [])
+            for link in links:
+                if link["targetId"] == target_id:
+                    link["type"] = new_label
+                    break
+            break
+    
+    state["Cast"] = cast
+    db.save_world_state(profile, state)
+
 # ==========================================
 # 10. REACTION TOOL & FACTION LOGIC
 # ==========================================

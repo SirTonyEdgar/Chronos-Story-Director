@@ -146,41 +146,86 @@ const CustomNode = ({ data }) => {
   );
 };
 
-const EdgeLabel = ({ label, x, y }) => (
-  <EdgeLabelRenderer>
-    <div style={{
-        position: 'absolute',
-        transform: `translate(-50%, -50%) translate(${x}px,${y}px)`,
-        background: '#09090b', padding: '6px 12px', borderRadius: '4px',
-        fontSize: '13px', fontWeight: 600, color: '#e4e4e7', border: '1px solid #333',
-        pointerEvents: 'none', zIndex: 1002, whiteSpace: 'nowrap',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.8)', letterSpacing: '0.2px'
-      }}>
-      {label}
-    </div>
-  </EdgeLabelRenderer>
-);
+const EditableEdgeLabel = ({ label, x, y, edgeId, onSave }) => {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(label);
+  const inputRef = React.useRef(null);
 
-const SmartBezierEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label, style, markerEnd }) => {
+  useEffect(() => { setValue(label); }, [label]);
+
+  const handleDoubleClick = (e) => {
+    e.stopPropagation();
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 50);
+  };
+
+  const handleSave = () => {
+    setEditing(false);
+    if (value !== label) onSave(edgeId, value);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSave();
+    if (e.key === 'Escape') { setValue(label); setEditing(false); }
+    e.stopPropagation();
+  };
+
+  return (
+    <EdgeLabelRenderer>
+      <div
+        style={{
+          position: 'absolute',
+          transform: `translate(-50%, -50%) translate(${x}px,${y}px)`,
+          background: editing ? '#1a1a2e' : '#09090b',
+          padding: editing ? '2px 4px' : '6px 12px',
+          borderRadius: '4px',
+          border: editing ? '1px solid #3b82f6' : '1px solid #333',
+          fontSize: '13px', fontWeight: 600, color: '#e4e4e7',
+          pointerEvents: 'all', zIndex: 1002, whiteSpace: 'nowrap',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.8)', letterSpacing: '0.2px',
+          cursor: editing ? 'text' : 'pointer',
+          minWidth: '40px'
+        }}
+        onDoubleClick={handleDoubleClick}
+        title="Double-click to edit"
+      >
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            style={{
+              background: 'transparent', border: 'none', outline: 'none',
+              color: '#e4e4e7', fontSize: '13px', fontWeight: 600,
+              width: Math.max(value.length * 8, 60) + 'px', letterSpacing: '0.2px'
+            }}
+          />
+        ) : (
+          label
+        )}
+      </div>
+    </EdgeLabelRenderer>
+  );
+};
+
+const SmartBezierEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label, style, markerEnd, data }) => {
   const [edgePath] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   const nodes = useNodes(); 
 
-  // Default to midpoint for cleaner radial layouts
   let bestX = sourceX + (targetX - sourceX) * 0.5;
   let bestY = sourceY + (targetY - sourceY) * 0.5;
-  let found = false;
 
   const hash = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const jitter = (hash % 20) * 0.01; 
 
-  // Try to find a spot that doesn't overlap a node
   for (let t = 0.5; t < 0.9; t += 0.05) {
     const tWithJitter = Math.min(0.9, Math.max(0.1, t + jitter));
     const pos = getBezierPoint(tWithJitter, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition);
     if (findSafeSpot(pos.x, pos.y, nodes)) {
       bestX = pos.x;
       bestY = pos.y;
-      found = true;
       break;
     }
   }
@@ -188,12 +233,12 @@ const SmartBezierEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePositio
   return (
     <>
       <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
-      {label && <EdgeLabel label={label} x={bestX} y={bestY} />}
+      {label && <EditableEdgeLabel label={label} x={bestX} y={bestY} edgeId={id} onSave={data?.onSave} />}
     </>
   );
 };
 
-const SmartStraightEdge = ({ id, sourceX, sourceY, targetX, targetY, label, style, markerEnd }) => {
+const SmartStraightEdge = ({ id, sourceX, sourceY, targetX, targetY, label, style, markerEnd, data }) => {
   const [edgePath] = getStraightPath({ sourceX, sourceY, targetX, targetY });
   const labelX = sourceX + (targetX - sourceX) * 0.5;
   const labelY = sourceY + (targetY - sourceY) * 0.5;
@@ -201,7 +246,7 @@ const SmartStraightEdge = ({ id, sourceX, sourceY, targetX, targetY, label, styl
   return (
     <>
       <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
-      {label && <EdgeLabel label={label} x={labelX} y={labelY} />}
+      {label && <EditableEdgeLabel label={label} x={labelX} y={labelY} edgeId={id} onSave={data?.onSave} />}
     </>
   );
 };
@@ -418,6 +463,28 @@ function GraphEditor({ profile }) {
     setNodes(filtered);
   }, [showAssets, activeTimeline]);
 
+  // --- EDGE LABEL SAVE (ref pattern so closure always has latest edges) ---
+  const handleEdgeLabelSaveRef = React.useRef(null);
+  handleEdgeLabelSaveRef.current = async (edgeId, newLabel) => {
+    setEdges(eds => eds.map(e => e.id !== edgeId ? e : { ...e, label: newLabel }));
+    const edge = edges.find(e => e.id === edgeId);
+    if (!edge) return;
+    try {
+      await axios.post(`${API_URL}/graph/${profile}/edge_label`, {
+        source_id: edge.source,
+        target_id: edge.target,
+        label: newLabel
+      });
+      toast("Relationship updated.", "success");
+    } catch (err) {
+      toast("Failed to save: " + err.message, "error");
+    }
+  };
+
+  const handleEdgeLabelSave = useCallback((edgeId, newLabel) => {
+    handleEdgeLabelSaveRef.current(edgeId, newLabel);
+  }, []);
+
   async function fetchData() {
     try {
       const res = await axios.get(`${API_URL}/graph/${profile}`);
@@ -442,7 +509,8 @@ function GraphEditor({ profile }) {
         animated: false,
         markerEnd: { type: MarkerType.ArrowClosed, width: 15, height: 15, color: '#78909c' },
         style: { strokeWidth: 2, stroke: '#78909c' },
-        label: edge.label
+        label: edge.label,
+        data: { onSave: handleEdgeLabelSave }
       }));
       
       setEdges(arrowEdges);
@@ -480,7 +548,8 @@ function GraphEditor({ profile }) {
     setEdges(smartEdges.map(e => ({ 
       ...e, 
       type: lineType, 
-      markerEnd: { type: MarkerType.ArrowClosed, width: 15, height: 15, color: '#78909c' } 
+      markerEnd: { type: MarkerType.ArrowClosed, width: 15, height: 15, color: '#78909c' },
+      data: { ...e.data, onSave: handleEdgeLabelSave }
     })));
     window.requestAnimationFrame(() => fitView({ padding: 0.1, duration: 800 }));
   }, [nodes, edges, fitView, setNodes, setEdges]);
