@@ -307,6 +307,8 @@ export default function SceneCreator({ profile }) {
   // --- SPOILER WARNING STATE ---
   const [spoilerWarnings, setSpoilerWarnings] = useState([]);
 
+  const [revealsPassed, setRevealsPassed] = useState([]);
+
   // --- INITIALIZATION ---
 
   useEffect(() => {
@@ -438,6 +440,17 @@ export default function SceneCreator({ profile }) {
       setFileContent(res.data.content);
       setActiveTab("read");
       fetchGenerationLog(res.data.filename);
+
+      // Check if any reveals have passed — prompt user to update Known By
+      if (year || dateStr) {
+        try {
+          const revealRes = await axios.get(
+            `${API_URL}/scene/reveal_check/${profile}`,
+            { params: { scene_year: year || 0, scene_date: dateStr || "" } }
+          );
+          setRevealsPassed(revealRes.data.reveals || []);
+        } catch (err) { /* silent */ }
+      }
     } catch (err) {
       console.error(err);
       toast("Generation failed: " + (err.response?.data?.detail || err.message), "error");
@@ -816,6 +829,36 @@ export default function SceneCreator({ profile }) {
                 ))}
               </div>
             )}
+
+            {/* REVEAL CHECK PANEL */}
+              {revealsPassed.length > 0 && (
+                <div style={{ margin: '0 0 16px 0', background: 'rgba(234,179,8,0.05)', border: '1px solid #854d0e', borderRadius: '8px', padding: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#eab308', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      🔓 Reveal Check — Known By may need updating
+                    </span>
+                    <button
+                      onClick={() => setRevealsPassed([])}
+                      style={{ background: 'none', border: 'none', color: '#52525b', cursor: 'pointer', fontSize: '11px' }}
+                    >
+                      dismiss
+                    </button>
+                  </div>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#a1a1aa', lineHeight: '1.5' }}>
+                    This scene's date is at or past the reveal date for these documents. If a character learned this information in this scene, consider adding them to the Known By field.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {revealsPassed.map(r => (
+                      <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#18181b', border: '1px solid #27272a', borderRadius: '6px', padding: '8px 12px' }}>
+                        <div>
+                          <span style={{ fontSize: '13px', color: '#e4e4e7', fontWeight: '500' }}>{r.name}</span>
+                          <span style={{ fontSize: '11px', color: '#52525b', marginLeft: '10px' }}>reveal: {r.reveal_date}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             {/* Row 6: Action Buttons */}
             <div style={{ display: 'flex', gap: '12px' }}>

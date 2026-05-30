@@ -714,6 +714,53 @@ def check_upcoming_spoilers(profile_name: str, scene_year: int, scene_date: str)
 
     return warnings
 
+def check_reveals_passed(profile_name: str, scene_year: int, scene_date: str) -> List[dict]:
+    """
+    Checks if the scene date is at or past any fragment's reveal_date.
+    Returns fragments whose reveal has now passed — user should consider updating Known By.
+    Handles any calendar system via LLM comparison.
+    """
+    if not scene_year and not scene_date:
+        return []
+
+    all_frags = db.get_fragments(profile_name, doc_type=None)
+    passed = []
+    scene_context = f"{scene_date}, {scene_year}".strip(", ")
+
+    for r in all_frags:
+        reveal_date = r[6] if len(r) > 6 else ""
+        if not reveal_date:
+            continue
+
+        name = r[1]
+        frag_id = r[0]
+
+        prompt = f"""
+        TASK: Determine if a reveal date has been reached or passed relative to the current narrative date.
+
+        Current narrative date: {scene_context}
+        Reveal date: {reveal_date}
+
+        Has the reveal date been reached or passed?
+        Answer YES if the current date is at or after the reveal date.
+        Answer NO if the reveal date is still in the future.
+        Output YES or NO only.
+        """
+
+        try:
+            llm = get_llm(profile_name, "librarian")
+            res = llm.invoke([HumanMessage(content=prompt)]).content.strip().upper()
+            if res.startswith("YES"):
+                passed.append({
+                    "id": frag_id,
+                    "name": name,
+                    "reveal_date": reveal_date
+                })
+        except Exception:
+            continue
+
+    return passed
+
 def audit_scenes_for_spoilers(profile_name: str) -> List[dict]:
     """
     Scans all existing scene files for accidental spoiler leakage.

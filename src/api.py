@@ -227,6 +227,18 @@ def check_scene_spoilers(profile: str, payload: SceneGenerationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/scene/reveal_check/{profile}")
+def reveal_check(profile: str, scene_year: int = 0, scene_date: str = ""):
+    """
+    Checks if the scene date is at or past any fragment's reveal_date.
+    Returns fragments whose Known By field may need updating.
+    """
+    try:
+        results = engine.check_reveals_passed(profile, scene_year, scene_date)
+        return {"reveals": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/scene/consequences/{profile}/{filename}")
 def get_scene_consequences(profile: str, filename: str):
     """
