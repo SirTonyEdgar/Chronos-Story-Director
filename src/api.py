@@ -523,7 +523,8 @@ def list_knowledge_fragments(profile: str, category: str):
             "timeline": f[5] if len(f) > 5 and f[5] else "",
             "metadata": f[4] if len(f) > 4 and f[4] else "",
             "reveal_date": f[6] if len(f) > 6 and f[6] else "",
-            "known_by": f[7] if len(f) > 7 and f[7] else ""
+            "known_by": f[7] if len(f) > 7 and f[7] else "",
+            "known_versions": f[8] if len(f) > 8 and f[8] else "{}"
         } 
         for f in fragments
     ]
@@ -601,6 +602,15 @@ def update_fragment_known_by(profile: str, fragment_id: int, payload: dict):
         engine.update_fragment_known_by(profile, fragment_id, payload.get("known_by", ""))
         engine.invalidate_retrieval_cache(profile)
         return {"status": "Known-by updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge/known_versions/{profile}/{fragment_id}")
+def update_fragment_known_versions(profile: str, fragment_id: int, payload: dict):
+    """Saves the known_versions field (JSON) for a fragment."""
+    try:
+        engine.update_fragment_known_versions(profile, fragment_id, payload.get("known_versions", "{}"))
+        return {"status": "saved"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

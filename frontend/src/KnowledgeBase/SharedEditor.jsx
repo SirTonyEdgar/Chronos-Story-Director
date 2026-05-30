@@ -114,6 +114,8 @@ export default function SharedEditor({ profile, category, icon, color, descripti
   const [editKnownBy, setEditKnownBy] = useState("");
   const [isSavingKnownBy, setIsSavingKnownBy] = useState(false);
   const [knownByInput, setKnownByInput] = useState("");
+  const [knownVersions, setKnownVersions] = useState({});
+  const [expandedVersions, setExpandedVersions] = useState({});
 
   const [autoSplit, setAutoSplit] = useState(false);
 
@@ -140,6 +142,9 @@ export default function SharedEditor({ profile, category, icon, color, descripti
         setEditMetadata(item.metadata || "");
         setShowMeta(false); 
         setEditKnownBy(item.known_by || "");
+        try {
+          setKnownVersions(JSON.parse(item.known_versions || "{}"));
+        } catch { setKnownVersions({}); }
       }
     } else {
       setEditTitle("");
@@ -147,6 +152,8 @@ export default function SharedEditor({ profile, category, icon, color, descripti
       setEditTimeline("");
       setEditMetadata("");
       setEditKnownBy("");
+      setKnownVersions({});
+      setExpandedVersions({});
     }
   }, [selectedId, items]);
 
@@ -227,6 +234,18 @@ export default function SharedEditor({ profile, category, icon, color, descripti
       toast("Failed to save access: " + err.message, "error");
     } finally {
       setIsSavingKnownBy(false);
+    }
+  };
+
+  const handleSaveKnownVersions = async (entity, versionText) => {
+    const updated = { ...knownVersions, [entity]: versionText };
+    setKnownVersions(updated);
+    try {
+      await axios.post(`${API_URL}/knowledge/known_versions/${profile}/${selectedId}`, {
+        known_versions: JSON.stringify(updated)
+      });
+    } catch (err) {
+      toast("Failed to save version: " + err.message, "error");
     }
   };
 
@@ -545,36 +564,71 @@ export default function SharedEditor({ profile, category, icon, color, descripti
         {/* --- KNOWN BY PANEL --- */}
         {selectedId && (
           <div style={{ borderTop: '1px solid #1a1a1a', background: '#0a0a0a', padding: '12px 25px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '13px', color: '#71717a', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ fontSize: '13px', color: '#a1a1aa', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Known By
               </span>
-              <span style={{ fontSize: '11px', color: '#3f3f46' }}>Empty = Universal (everyone)</span>
             </div>
             <div style={{ fontSize: '12px', color: '#52525b', marginBottom: '8px' }}>
-              Who has access to this information? Use faction names, character names, or "Public". Comma-separated.
+              Who has access to this information? Optionally describe what each person knows.
             </div>
 
-            {/* Tag display */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', minHeight: '28px' }}>
-              {editKnownBy.split(',').filter(e => e.trim()).map((entity, i) => (
-                <span key={i} style={{ fontSize: '12px', background: '#27272a', border: '1px solid #3f3f46', color: '#e4e4e7', padding: '3px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {entity.trim()}
-                  <button
-                    onClick={() => {
-                      const updated = editKnownBy.split(',').filter((_, idx) => idx !== i).join(', ');
-                      setEditKnownBy(updated);
-                    }}
-                    style={{ background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', padding: '0', fontSize: '12px', lineHeight: 1 }}
-                  >×</button>
-                </span>
-              ))}
-              {!editKnownBy && (
-                <span style={{ fontSize: '12px', color: '#3f3f46', fontStyle: 'italic' }}>Universal — no restrictions</span>
-              )}
+            {/* Empty state */}
+            {!editKnownBy && (
+              <div style={{ fontSize: '12px', color: '#3f3f46', fontStyle: 'italic', marginBottom: '8px' }}>
+                Empty = Universal (everyone) — no restrictions
+              </div>
+            )}
+
+            {/* Entity tags with expandable version notes */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+              {editKnownBy.split(',').filter(e => e.trim()).map((entity, i) => {
+                const name = entity.trim();
+                const isExpanded = expandedVersions[name];
+                const versionText = knownVersions[name] || "";
+                return (
+                  <div key={i} style={{ background: '#111', border: '1px solid #27272a', borderRadius: '6px', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', padding: '6px 10px', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', color: '#e4e4e7', fontWeight: '600', flex: 1 }}>{name}</span>
+                      <button
+                        onClick={() => setExpandedVersions(prev => ({ ...prev, [name]: !prev[name] }))}
+                        style={{ background: 'none', border: 'none', color: versionText ? '#a855f7' : '#52525b', cursor: 'pointer', fontSize: '11px', padding: '0 4px' }}
+                        title="Add what this person knows"
+                      >
+                        {versionText ? '✎ version' : '+ version'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const updated = editKnownBy.split(',').filter((_, idx) => idx !== i).join(', ');
+                          setEditKnownBy(updated);
+                          const newVersions = { ...knownVersions };
+                          delete newVersions[name];
+                          setKnownVersions(newVersions);
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#52525b', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}
+                      >×</button>
+                    </div>
+                    {isExpanded && (
+                      <div style={{ padding: '0 10px 10px 10px', borderTop: '1px solid #1a1a1a' }}>
+                        <div style={{ fontSize: '11px', color: '#52525b', marginBottom: '6px', marginTop: '8px' }}>
+                          What does {name} know about this? Leave blank to use the full document.
+                        </div>
+                        <textarea
+                          value={versionText}
+                          onChange={e => setKnownVersions(prev => ({ ...prev, [name]: e.target.value }))}
+                          onBlur={e => handleSaveKnownVersions(name, e.target.value)}
+                          placeholder={`e.g. ${name} knows the operation exists but believes it's a rogue unit, not sanctioned policy.`}
+                          rows={3}
+                          style={{ width: '100%', background: '#0a0a0a', border: '1px solid #27272a', color: '#e4e4e7', padding: '8px', borderRadius: '4px', fontSize: '12px', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: '1.5' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            {/* Input for adding new entity */}
+            {/* Input row */}
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
                 value={knownByInput}
@@ -589,7 +643,7 @@ export default function SharedEditor({ profile, category, icon, color, descripti
                   }
                 }}
                 placeholder="Type entity name and press Enter..."
-                style={{ flex: 1, background: '#111', border: '1px solid #27272a', color: '#fff', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', outline: 'none' }}
+                style={{ flex: 1, background: '#111', border: '1px solid #27272a', color: '#e4e4e7', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', outline: 'none' }}
               />
               <button
                 onClick={() => {

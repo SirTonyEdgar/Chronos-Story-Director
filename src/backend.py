@@ -161,6 +161,7 @@ def update_fragment_metadata(profile, frag_id, new_metadata):
 def update_fragment_type(profile, frag_id, new_type): return db.update_fragment_type(profile, frag_id, new_type)
 def update_fragment_reveal_date(profile, frag_id, reveal_date): return db.update_fragment_reveal_date(profile, frag_id, reveal_date)
 def update_fragment_known_by(profile, frag_id, known_by): return db.update_fragment_known_by(profile, frag_id, known_by)
+def update_fragment_known_versions(profile, frag_id, known_versions): return db.update_fragment_known_versions(profile, frag_id, known_versions)
 def get_all_fragments_for_remetadata(profile): return db.get_all_fragments_for_remetadata(profile)
 def keyword_search_fragments(profile, query, doc_types=None): return db.keyword_search_fragments(profile, query, doc_types)
 def delete_fragment(p, i):
@@ -1077,7 +1078,7 @@ def plan_scene(state: StoryState) -> dict:
         pov_context=state.get('pov_context', '')
     )
     
-    smart_context_str = db.get_content_by_ids(profile, relevant_ids)
+    smart_context_str = db.get_content_by_ids(profile, relevant_ids, pov_context=state.get('pov_context', ''))
     if not smart_context_str:
         smart_context_str = "No specific historical records found for this scene."
 
@@ -1209,7 +1210,7 @@ def draft_scene(state: StoryState) -> dict:
         pov_context=state.get('pov_context', '')
     )
     
-    smart_context_str = db.get_content_by_ids(profile, relevant_ids)
+    smart_context_str = db.get_content_by_ids(profile, relevant_ids, pov_context=state.get('pov_context', ''))
     if not smart_context_str:
         smart_context_str = "No specific historical records found for this scene."
 
@@ -3428,7 +3429,7 @@ def preview_reaction_for_scene(profile_name, filename, faction, public_only=Fals
         current_timeline=timeline,
         pov_context=""
     )
-    smart_facts = db.get_content_by_ids(profile_name, relevant_ids)
+    smart_facts = db.get_content_by_ids(profile_name, relevant_ids, pov_context=true_faction)
     style_refs, world_refs = get_reference_context(profile_name)
 
     if public_only:

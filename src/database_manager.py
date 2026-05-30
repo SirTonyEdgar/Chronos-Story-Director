@@ -131,6 +131,7 @@ def init_db(profile_name: str):
         timeline TEXT DEFAULT '',
         reveal_date TEXT DEFAULT '',
         known_by TEXT DEFAULT '',
+        known_versions TEXT DEFAULT '{}',
         original_draft TEXT DEFAULT ''
     )''')
     
@@ -153,6 +154,11 @@ def init_db(profile_name: str):
 
     try:
         c.execute("ALTER TABLE memory_fragments ADD COLUMN known_by TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        c.execute("ALTER TABLE memory_fragments ADD COLUMN known_versions TEXT DEFAULT '{}'")
     except sqlite3.OperationalError:
         pass
 
@@ -304,27 +310,55 @@ def get_fragments(profile_name: str, doc_type: Optional[str] = None):
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     if doc_type: 
-        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date, known_by FROM memory_fragments WHERE type = ? ORDER BY id DESC", (doc_type,))
+        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date, known_by, known_versions FROM memory_fragments WHERE type = ? ORDER BY id DESC", (doc_type,))
     else: 
-        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date, known_by FROM memory_fragments ORDER BY id DESC")
+        c.execute("SELECT id, source_filename, content, type, metadata, timeline, reveal_date, known_by, known_versions FROM memory_fragments ORDER BY id DESC")
     rows = c.fetchall()
     conn.close()
     return rows
 
-def get_content_by_ids(profile_name: str, id_list: List[int]) -> str:
-    """Efficiently retrieves content for a list of IDs in a single query."""
+def get_content_by_ids(profile_name: str, id_list: List[int], pov_context: str = "") -> str:
+    """
+    Retrieves content for a list of IDs.
+    If pov_context is provided and a fragment has a known_versions entry for that POV,
+    injects the version as a perspective filter alongside the full document.
+    """
     if not id_list: return ""
     paths = get_paths(profile_name)
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     
     placeholders = ','.join(['?'] * len(id_list))
-    query = f"SELECT content FROM memory_fragments WHERE id IN ({placeholders})"
+    query = f"SELECT id, source_filename, content, known_versions FROM memory_fragments WHERE id IN ({placeholders})"
     
     try:
         c.execute(query, id_list)
         rows = c.fetchall()
-        return "\n\n".join([r[0] for r in rows])
+        results = []
+        for frag_id, filename, content, known_versions_json in rows:
+            if pov_context and known_versions_json:
+                try:
+                    versions = json.loads(known_versions_json)
+                    # Check for a version matching the POV (case-insensitive)
+                    pov_version = None
+                    for entity, version_text in versions.items():
+                        if entity.strip().lower() == pov_context.strip().lower() and version_text.strip():
+                            pov_version = version_text.strip()
+                            break
+                    if pov_version:
+                        # Filtered replace: inject perspective note + full document with constraint
+                        results.append(
+                            f"[Document: {filename}]\n"
+                            f"PERSPECTIVE FILTER — {pov_context}'s understanding only:\n"
+                            f"{pov_version}\n\n"
+                            f"FULL DOCUMENT (AI context — only use information consistent with the perspective filter above):\n"
+                            f"{content}"
+                        )
+                        continue
+                except Exception:
+                    pass
+            results.append(content)
+        return "\n\n".join(results)
     except Exception as e:
         print(f"Batch Fetch Error: {e}")
         return ""
@@ -388,6 +422,15 @@ def update_fragment_known_by(profile_name: str, frag_id: int, known_by: str):
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     c.execute("UPDATE memory_fragments SET known_by = ? WHERE id = ?", (known_by, frag_id))
+    conn.commit()
+    conn.close()
+
+def update_fragment_known_versions(profile_name: str, frag_id: int, known_versions: str):
+    """Updates the known_versions field (JSON) for a specific fragment."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE memory_fragments SET known_versions = ? WHERE id = ?", (known_versions, frag_id))
     conn.commit()
     conn.close()
 
