@@ -2194,6 +2194,117 @@ def bulk_delete_files(profile: str, filenames: List[str]) -> int:
 # 5. CO-AUTHOR CHAT MODULE
 # ==========================================
 
+# ==========================================
+# CO-AUTHOR SYSTEM KNOWLEDGE
+# ==========================================
+
+CHRONOS_SYSTEM_KNOWLEDGE = """
+*** ABOUT CHRONOS STORY DIRECTOR ***
+You are the Co-Author embedded in Chronos Story Director — an AI-assisted long-form storytelling system. You can answer questions about how the system works, what features exist, and how to use them effectively.
+
+MODULES:
+- Scene Creator: generates prose scenes through a 5-node pipeline (Planner → Drafter → Validator → Style Enforcer → Voice Check). Supports chapters, parts, fog of war, and timeline isolation. Has a Dry Run mode that shows you the outline and retrieved context before spending tokens on full generation.
+- Reaction Tool: generates faction reactions to scenes. Uses a preview-before-commit workflow — reactions are shown for review and only appended to the scene file when the user clicks "Append to Scene."
+- War Room: strategic consequence simulation. Runs a causality report on a proposed action using world state, faction knowledge, and craft laws (agency, information asymmetry, material consequences). Has optional web search grounding.
+- Co-Author Chat (this module): named sessions with four modes — Free Chat, Brainstorm, Scene Repair, Canon/Lore Work. Supports KB attachment via search or file upload, canon locking per message, proposal extraction, contradiction detection, and session summary generation.
+- Knowledge Base: Lore, Rules, Plans, Facts, Characters, Factions, Spoilers, Reference tabs. Reference tab holds style references (prefix title with [Style]) and world texture references injected into every generation. The Librarian retrieves relevant documents using AI relevance scoring (threshold 6/10).
+- World State Tracker: tracks Cast, Assets, Skills, World Variables, Projects, Relations. Feeds directly into scene generation as structured JSON context. Has AI Batch Analysis to extract state changes from scenes, conflict detection, and backup/restore.
+- Network Map: visualizes cast relationships as a force-directed graph with orbital ring layout. Positions are saved per profile.
+- Compiler: assembles scenes into manuscript and exports to DOCX.
+
+SETTINGS (accessible via the Settings tab):
+- 8 separate model keys: scene, planner, validator, style, coauthor, reaction, warroom, librarian. Each pipeline node can use a different model.
+- Time system, chapter system, and multiverse/timeline support are all toggleable.
+- Web search available for War Room and Co-Author Chat on Claude and Gemini models only.
+
+PIPELINE NODES (scene generation):
+1. Planner — reads lore, rules, world state, and builds a scene outline
+2. Drafter — writes prose from the outline, applies craft laws
+3. Validator — checks continuity, consistency, and craft against the outline
+4. Style Enforcer — checks the draft against your Rulebook for style violations
+5. Voice Check — verifies character voice consistency against recent scenes
+
+KNOWLEDGE BASE — HOW RETRIEVAL WORKS:
+- The Librarian scores each document 1-10 for relevance to the current scene brief. Only documents scoring 6+ are retrieved.
+- Documents need Librarian Metadata (Entities, Period, Topics, Summary fields) to be retrieved accurately. Use bulk re-metadata to generate this automatically.
+- Known By field restricts which POV can access a document. Empty = universal.
+- Timeline field isolates documents to a specific story timeline.
+- Reference documents bypass the Librarian and are always injected.
+- reveal_date field triggers post-generation reminders to update Known By when a secret's reveal date is passed.
+
+COMMON ISSUES:
+- Document not being retrieved: fill in the Librarian Metadata fields. Use Bulk Re-metadata in the Knowledge Base header to regenerate all metadata at once.
+- Reaction Tool not appending: click "Append to Scene" after previewing — it does not auto-save.
+- Scene feels disconnected from lore: check that relevant documents have metadata and are not tagged to a different timeline.
+- Web search not working in War Room or Co-Author: only Claude and Gemini models support it. Other models fall back gracefully with a note.
+- Faction voice feels generic: add a dedicated Faction profile entry in the Factions tab with detailed voice, known information, and blind spots.
+- Generation taking a long time: the 5-node pipeline runs 5 sequential LLM calls. The Generate button shows which step is active.
+"""
+
+
+def _get_profile_meta_summary(profile_name: str) -> str:
+    """
+    Builds a brief summary of the profile's current state for Co-Author meta-awareness.
+    Scene count, KB completeness, cast size, world state basics.
+    """
+    try:
+        paths = db.get_paths(profile_name)
+        
+        # Scene count
+        scene_files = db.get_all_files_list(profile_name)
+        scene_count = len(scene_files) if scene_files else 0
+
+        # KB entry counts by category
+        all_frags = db.get_fragments(profile_name, doc_type=None)
+        category_counts = {}
+        for r in all_frags:
+            cat = r[3] or "Unknown"
+            category_counts[cat] = category_counts.get(cat, 0) + 1
+
+        kb_summary_parts = []
+        for cat, count in sorted(category_counts.items()):
+            kb_summary_parts.append(f"{cat}: {count}")
+        kb_summary = ", ".join(kb_summary_parts) if kb_summary_parts else "empty"
+
+        # World state basics
+        state = db.get_world_state(profile_name)
+        cast_count = len(state.get("Cast", []))
+        asset_count = len(state.get("Assets", []))
+        has_timelines = len(state.get("Timelines", [])) > 0
+        year = state.get("year", 0)
+
+        lines = [
+            f"Profile: {profile_name}",
+            f"Scenes written: {scene_count}",
+            f"Knowledge Base: {kb_summary}",
+            f"Cast size: {cast_count} characters",
+            f"Assets: {asset_count}",
+        ]
+        if year and year > 0:
+            lines.append(f"Current story year: {year}")
+        if has_timelines:
+            timeline_names = [t.get("Name", "") for t in state.get("Timelines", [])]
+            lines.append(f"Active timelines: {', '.join(timeline_names)}")
+
+        # Completeness hints
+        hints = []
+        if category_counts.get("Rulebook", 0) == 0:
+            hints.append("no Rulebook entries — consider adding world rules and style guidelines")
+        if category_counts.get("Faction", 0) == 0:
+            hints.append("no Faction profiles — reactions may lack distinct voice")
+        if cast_count == 0:
+            hints.append("no Cast in World State — add characters to improve scene context")
+        if scene_count == 0:
+            hints.append("no scenes written yet")
+
+        if hints:
+            lines.append(f"Setup notes: {'; '.join(hints)}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Profile: {profile_name} (meta-summary unavailable: {e})"
+
 def run_chat_query(profile_name: str, user_input: str, timeline: str = "",
                    mode: str = "free", attached_content: str = "",
                    attached_filename: str = "", session_id: Optional[int] = None) -> str:
@@ -2205,6 +2316,7 @@ def run_chat_query(profile_name: str, user_input: str, timeline: str = "",
     state = db.get_world_state(profile_name)
     settings = db.get_story_settings(profile_name)
     recent_scenes = get_last_scenes(profile_name)
+    profile_meta = _get_profile_meta_summary(profile_name)
 
     relevant_ids = get_relevant_fragment_ids(
         profile_name,
@@ -2271,7 +2383,14 @@ def run_chat_query(profile_name: str, user_input: str, timeline: str = "",
     CURRENT YEAR: {era_display}
     {timeline_instruction}
     {behavior}
+
+    *** ABOUT THIS PROJECT ***
+    {profile_meta}
+
+    *** ABOUT THIS TOOL ***
+    {CHRONOS_SYSTEM_KNOWLEDGE}
     {attached_block}
+
     *** PRIMARY SOURCE OF TRUTH (STORY BIBLE) ***
     {smart_knowledge}
 
@@ -2310,6 +2429,7 @@ def run_chat_query_with_search(profile_name: str, user_input: str, timeline: str
     state = db.get_world_state(profile_name)
     settings = db.get_story_settings(profile_name)
     recent_scenes = get_last_scenes(profile_name)
+    profile_meta = _get_profile_meta_summary(profile_name)
 
     relevant_ids = get_relevant_fragment_ids(
         profile_name,
@@ -2348,6 +2468,12 @@ def run_chat_query_with_search(profile_name: str, user_input: str, timeline: str
     CURRENT YEAR: {era_display}
     {timeline_instruction}
     {behavior}
+
+    *** ABOUT THIS PROJECT ***
+    {profile_meta}
+
+    *** ABOUT THIS TOOL ***
+    {CHRONOS_SYSTEM_KNOWLEDGE}
     {attached_block}
 
     *** PRIMARY SOURCE OF TRUTH (STORY BIBLE) ***
