@@ -27,6 +27,15 @@ const NODE_WIDTH = 220;
 const NODE_HEIGHT = 240;
 const SYSTEM_BUFFER = 2000;
 
+// Label position registry — cleared on each layout, prevents label-on-label overlap
+const _labelRegistry = [];
+const clearLabelRegistry = () => { _labelRegistry.length = 0; };
+const registerLabel = (x, y) => { _labelRegistry.push({ x, y }); };
+const isLabelClear = (x, y) => {
+  const W = 90, H = 30;
+  return !_labelRegistry.some(p => Math.abs(x - p.x) < W && Math.abs(y - p.y) < H);
+};
+
 /**
  * MATH UTILITIES
  */
@@ -221,12 +230,18 @@ const SmartBezierEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePositio
   const hash = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const jitter = (hash % 20) * 0.01; 
 
-  for (let t = 0.5; t < 0.9; t += 0.05) {
-    const tWithJitter = Math.min(0.9, Math.max(0.1, t + jitter));
+  const searchPoints = [
+    ...Array.from({length: 9}, (_, i) => 0.5 + i * 0.05),
+    ...Array.from({length: 9}, (_, i) => 0.45 - i * 0.05)
+  ];
+
+  for (const t of searchPoints) {
+    const tWithJitter = Math.min(0.95, Math.max(0.05, t + jitter));
     const pos = getBezierPoint(tWithJitter, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition);
-    if (findSafeSpot(pos.x, pos.y, nodes)) {
+    if (findSafeSpot(pos.x, pos.y, nodes) && isLabelClear(pos.x, pos.y)) {
       bestX = pos.x;
       bestY = pos.y;
+      registerLabel(bestX, bestY);
       break;
     }
   }
@@ -241,13 +256,31 @@ const SmartBezierEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePositio
 
 const SmartStraightEdge = ({ id, sourceX, sourceY, targetX, targetY, label, style, markerEnd, data }) => {
   const [edgePath] = getStraightPath({ sourceX, sourceY, targetX, targetY });
-  const labelX = sourceX + (targetX - sourceX) * 0.5;
-  const labelY = sourceY + (targetY - sourceY) * 0.5;
+  const nodes = useNodes();
+
+  let bestX = sourceX + (targetX - sourceX) * 0.5;
+  let bestY = sourceY + (targetY - sourceY) * 0.5;
+
+  const searchPoints = [
+    ...Array.from({length: 9}, (_, i) => 0.5 + i * 0.05),
+    ...Array.from({length: 9}, (_, i) => 0.45 - i * 0.05)
+  ];
+
+  for (const t of searchPoints) {
+    const px = sourceX + (targetX - sourceX) * t;
+    const py = sourceY + (targetY - sourceY) * t;
+    if (findSafeSpot(px, py, nodes) && isLabelClear(px, py)) {
+      bestX = px;
+      bestY = py;
+      registerLabel(bestX, bestY);
+      break;
+    }
+  }
 
   return (
     <>
       <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
-      {label && <EditableEdgeLabel label={label} x={labelX} y={labelY} edgeId={id} onSave={data?.onSave} />}
+      {label && <EditableEdgeLabel label={label} x={bestX} y={bestY} edgeId={id} onSave={data?.onSave} />}
     </>
   );
 };
@@ -393,18 +426,93 @@ const getIsolatedRippleLayout = (nodes, edges) => {
   return { nodes, edges };
 };
 
-const getDagreLayout = (nodes, edges, direction = 'TB') => {
-  const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir: direction, nodesep: 150, ranksep: 200 });
-  nodes.forEach((node) => { dagreGraph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT }); });
-  edges.forEach((edge) => { dagreGraph.setEdge(edge.source, edge.target); });
-  dagre.layout(dagreGraph);
-  const layoutedNodes = nodes.map((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    return { ...node, position: { x: nodeWithPosition.x - NODE_WIDTH / 2, y: nodeWithPosition.y - NODE_HEIGHT / 2 } };
+const getOrbitDepthLayout = (nodes, edges, direction = 'TB') => {
+  const LEVEL_GAP = 750;
+  const NODE_GAP = 300;
+
+  // Build a map of id → node
+  const nodeMap = {};
+  nodes.forEach(n => { nodeMap[n.id] = n; });
+
+  // Find POV node(s)
+  const povNodes = nodes.filter(n => n.data.role === 'POV' || n.data.category === 'Protagonist');
+  if (povNodes.length === 0) {
+    // No POV — fall back to simple grid
+    nodes.forEach((n, i) => {
+      n.position = direction === 'TB'
+        ? { x: i * NODE_GAP, y: 0 }
+        : { x: 0, y: i * NODE_GAP };
+    });
+    return { nodes, edges };
+  }
+
+  // Assign levels via BFS from POV using orbit field first, then edges
+  const levels = {};
+  const queue = [];
+  povNodes.forEach(n => { levels[n.id] = 0; queue.push(n.id); });
+
+  // Build adjacency from orbit field and edges combined
+  const children = {};
+  nodes.forEach(n => {
+    const orbitTarget = n.data.orbit;
+    if (orbitTarget && nodeMap[orbitTarget]) {
+      if (!children[orbitTarget]) children[orbitTarget] = [];
+      children[orbitTarget].push(n.id);
+    }
   });
-  return { nodes: layoutedNodes, edges };
+  edges.forEach(e => {
+    if (!children[e.source]) children[e.source] = [];
+    if (!children[e.source].includes(e.target)) children[e.source].push(e.target);
+  });
+
+  const ringToLevel = { personal: 1, allies: 2, hostile: 3 };
+
+  let head = 0;
+  while (head < queue.length) {
+    const current = queue[head++];
+    const currentLevel = levels[current];
+    (children[current] || []).forEach(childId => {
+      if (levels[childId] === undefined) {
+        levels[childId] = currentLevel + 1;
+        queue.push(childId);
+      }
+    });
+  }
+
+  // Override with explicit Ring field where set, fall back to BFS depth
+  const maxBfsLevel = Math.max(0, ...Object.values(levels));
+  nodes.forEach(n => {
+    if (n.data.role === 'POV' || n.data.category === 'Protagonist') {
+      levels[n.id] = 0;
+    } else if (n.data.ring) {
+      levels[n.id] = ringToLevel[n.data.ring.toLowerCase()] ?? maxBfsLevel + 1;
+    } else if (levels[n.id] === undefined) {
+      levels[n.id] = maxBfsLevel + 1;
+    }
+    // else: BFS result stays
+  });
+
+  // Group nodes by level
+  const byLevel = {};
+  nodes.forEach(n => {
+    const lvl = levels[n.id];
+    if (!byLevel[lvl]) byLevel[lvl] = [];
+    byLevel[lvl].push(n);
+  });
+
+  // Position nodes
+  Object.entries(byLevel).forEach(([lvl, levelNodes]) => {
+    const level = parseInt(lvl);
+    const totalSpan = (levelNodes.length - 1) * NODE_GAP;
+    levelNodes.forEach((n, i) => {
+      const offset = -totalSpan / 2 + i * NODE_GAP;
+      n.position = direction === 'TB'
+        ? { x: offset, y: level * LEVEL_GAP }
+        : { x: level * LEVEL_GAP, y: offset };
+    });
+  });
+
+  return { nodes, edges };
 };
 
 const getSmartEdges = (nodes, edges, mode) => {
@@ -543,7 +651,7 @@ function GraphEditor({ profile }) {
     
     let layouted;
     if (mode === 'RIPPLE') layouted = getIsolatedRippleLayout(currentNodes, currentEdges);
-    else layouted = getDagreLayout(currentNodes, currentEdges, mode);
+    else layouted = getOrbitDepthLayout(currentNodes, currentEdges, mode);
 
     const cleanNodes = layouted.nodes.map(n => ({
         ...n,
@@ -553,8 +661,9 @@ function GraphEditor({ profile }) {
     const lineType = (mode === 'RIPPLE') ? 'smartBezier' : 'smartStraight';
     const smartEdges = getSmartEdges(cleanNodes, layouted.edges, mode);
     
+    clearLabelRegistry();
     setNodes([...cleanNodes]);
-    setEdges(smartEdges.map(e => ({ 
+    setEdges(smartEdges.map(e => ({
       ...e, 
       type: lineType, 
       markerEnd: { type: MarkerType.ArrowClosed, width: 15, height: 15, color: '#78909c' },
@@ -584,8 +693,8 @@ function GraphEditor({ profile }) {
         <span style={{color: '#666', fontSize: '12px', alignSelf: 'center', marginRight: '5px'}}>Layout:</span>
         <button onClick={() => applyLayout('RIPPLE')} style={iconBtnStyle} title="Smart Ripple (Isolated)"><Layers size={18} /></button>
         <div style={{width: '1px', background: '#444', margin: '0 5px'}}></div>
-        <button onClick={() => applyLayout('TB')} style={iconBtnStyle} title="Vertical Tree"><ArrowDown size={18} /></button>
-        <button onClick={() => applyLayout('LR')} style={iconBtnStyle} title="Horizontal Tree"><ArrowRight size={18} /></button>
+        <button onClick={() => applyLayout('TB')} style={iconBtnStyle} title="Orbit Depth — top to bottom"><ArrowDown size={18} /></button>
+        <button onClick={() => applyLayout('LR')} style={iconBtnStyle} title="Orbit Depth — left to right"><ArrowRight size={18} /></button>
         
         <div style={{width: '1px', background: '#444', margin: '0 5px'}}></div>
         <button onClick={() => zoomIn()} style={iconBtnStyle} title="Zoom In"><ZoomIn size={18} /></button>

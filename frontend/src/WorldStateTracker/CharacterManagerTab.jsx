@@ -364,7 +364,6 @@ export default function CharacterManagerTab({ state, setState, profile }) {
                         <option value="">Auto (keyword match)</option>
                         <option value="personal">Personal — innermost ring</option>
                         <option value="allies">Allies — second ring</option>
-                        <option value="assets">Assets — third ring</option>
                         <option value="hostile">Hostile — outermost ring</option>
                       </select>
                     </div>
