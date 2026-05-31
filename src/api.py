@@ -614,6 +614,53 @@ def update_fragment_known_versions(profile: str, fragment_id: int, payload: dict
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- RESERVED NAMES ---
+
+@app.get("/reserved_names/{profile}")
+def list_reserved_names(profile: str):
+    """Returns all reserved names for a profile."""
+    try:
+        return engine.get_reserved_names(profile)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/reserved_names/{profile}")
+def add_reserved_name(profile: str, payload: dict):
+    """Adds a name to the reserved names list."""
+    try:
+        new_id = engine.add_reserved_name(profile, payload.get("name", ""), payload.get("note", ""))
+        return {"id": new_id, "name": payload.get("name"), "note": payload.get("note", "")}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/reserved_names/{profile}/{name_id}")
+def delete_reserved_name(profile: str, name_id: int):
+    """Deletes a reserved name."""
+    try:
+        engine.delete_reserved_name(profile, name_id)
+        return {"status": "deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/reserved_names/{profile}/{name_id}/note")
+def update_reserved_name_note(profile: str, name_id: int, payload: dict):
+    """Updates the note on a reserved name."""
+    try:
+        engine.update_reserved_name_note(profile, name_id, payload.get("note", ""))
+        return {"status": "updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/reserved_names/{profile}/extract")
+def extract_reserved_names(profile: str, payload: dict):
+    """Extracts names from scene files using LLM."""
+    try:
+        filenames = payload.get("filenames", [])
+        names = engine.extract_names_from_scenes(profile, filenames)
+        return {"names": names}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/knowledge/remetadata/{profile}")
 def bulk_remetadata(profile: str):
     """

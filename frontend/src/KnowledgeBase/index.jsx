@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Book, Shield, Map, FileText, EyeOff, RefreshCw, CheckCircle2, Users, Network, Search, BookMarked } from 'lucide-react';
+import { Book, Shield, Map, FileText, EyeOff, RefreshCw, CheckCircle2, Users, Network, Search, BookMarked, Ban } from 'lucide-react';
 import { API_URL } from '../config';
 import { toast, confirm } from '../components/Notifications';
 
@@ -12,6 +12,7 @@ import RulesTab from './RulesTab';
 import PlansTab from './PlansTab';
 import FactsTab from './FactsTab';
 import SpoilersTab from './SpoilersTab';
+import ReservedNamesTab from './ReservedNamesTab';
 import ReferenceTab from './ReferenceTab';
 
 export default function KnowledgeBase({ profile }) {
@@ -89,6 +90,7 @@ export default function KnowledgeBase({ profile }) {
     { id: "Plans", icon: <Map size={16} />, label: "Plans", color: "#f59e0b" },
     { id: "Facts", icon: <FileText size={16} />, label: "Facts", color: "#10b981" },
     { id: "Spoilers", icon: <EyeOff size={16} />, label: "Spoilers", color: "#8b5cf6" },
+    { id: "ReservedNames", icon: <Ban size={16} />, label: "Reserved Names", color: "#f97316" },
     { id: "Reference", icon: <BookMarked size={16} />, label: "Reference", color: "#06b6d4" },
   ];
 
@@ -257,6 +259,7 @@ export default function KnowledgeBase({ profile }) {
         {activeTab === "Plans" && <PlansTab profile={profile} />}
         {activeTab === "Facts" && <FactsTab profile={profile} />}
         {activeTab === "Spoilers" && <SpoilersTab profile={profile} />}
+        {activeTab === "ReservedNames" && <ReservedNamesTab profile={profile} />}
         {activeTab === "Reference" && <ReferenceTab profile={profile} />}
       </div>
 

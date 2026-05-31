@@ -198,6 +198,59 @@ def get_generation_log(profile, filename): return db.get_generation_log(profile,
 def list_backups(profile): return db.list_backups(profile)
 def get_recent_backup_states(profile, count=3): return db.get_recent_backup_states(profile, count)
 def restore_backup(profile, filename): return db.restore_backup(profile, filename)
+def get_reserved_names(profile): return db.get_reserved_names(profile)
+def add_reserved_name(profile, name, note=""): return db.add_reserved_name(profile, name, note)
+def delete_reserved_name(profile, name_id): return db.delete_reserved_name(profile, name_id)
+def update_reserved_name_note(profile, name_id, note): return db.update_reserved_name_note(profile, name_id, note)
+
+def extract_names_from_scenes(profile_name: str, filenames: List[str]) -> List[str]:
+    """
+    Runs a lightweight LLM call to extract proper names and usernames
+    from the given scene files. Returns a deduplicated list of names.
+    """
+    paths = db.get_paths(profile_name)
+    combined_text = ""
+    for filename in filenames:
+        filepath = os.path.join(paths['output'], filename)
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                combined_text += f.read() + "\n\n"
+        except Exception:
+            continue
+
+    if not combined_text.strip():
+        return []
+
+    # Cap at 32000 chars to avoid token explosion
+    combined_text = combined_text[:32000]
+
+    prompt = f"""Extract every proper name and username from the text below.
+Include: character names, usernames, online handles, nicknames, callsigns.
+Exclude: place names, organization names, faction names, brand names.
+Output ONLY a comma-separated list of names. No explanations, no numbering, no extra text.
+
+TEXT:
+{combined_text}"""
+
+    try:
+        llm = get_llm(profile_name, "librarian")
+        response = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+        names = [n.strip() for n in response.split(',') if n.strip()]
+        return list(dict.fromkeys(names))  # deduplicate preserving order
+    except Exception as e:
+        print(f"  [Reserved Names] Extraction failed: {e}")
+        return []
+
+def get_reserved_names_block(profile_name: str) -> str:
+    """Returns a prompt-ready block of reserved names, or empty string if none."""
+    names = db.get_reserved_names(profile_name)
+    if not names:
+        return ""
+    name_list = ", ".join(n['name'] for n in names)
+    return f"""*** RESERVED NAMES — DO NOT REUSE ***
+The following names and usernames already exist in this story. Do not assign them to new background characters, minor characters, or online personas unless you are deliberately referencing the same individual:
+{name_list}
+If you need to name a new minor character or generate a username, invent something distinct from this list."""
 
 def get_next_chapter_number(profile_name):
     """Calculates the next available chapter number based on existing files."""
@@ -1349,6 +1402,8 @@ def draft_scene(state: StoryState) -> dict:
     BRIEF: {state['scene_brief']}
     
     INSTRUCTION: Write the full prose for this scene by expanding the APPROVED SCENE OUTLINE. You are not summarizing events — you are inhabiting them. The lore and world state are not documents to reference. They are the physics of the world you already live in. Write from inside that world, not about it.
+
+    {get_reserved_names_block(profile)}
 
     *** CRAFT LAWS (NON-NEGOTIABLE) ***
 
@@ -3493,6 +3548,8 @@ def preview_reaction_for_scene(profile_name, filename, faction, public_only=Fals
     *** HIERARCHY OF TRUTH ***
     1. LORE PRIORITY: If Lore says "Telepathy exists," then "Mental Chat" is a valid format.
     2. REALISM: Use real-world logic for the Era to determine how news travels.
+
+    {get_reserved_names_block(profile_name)}
 
     *** REACTION CRAFT LAWS (NON-NEGOTIABLE) ***
 

@@ -740,7 +740,7 @@ const styles = {
   container: { display: 'flex', height: '100%', gap: '0', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', background: '#09090b', width: '100%' },
   sidebar: { width: '320px', minWidth: '320px', display: 'flex', flexDirection: 'column', borderRight: '1px solid #333', background: '#111' },
   sidebarHeader: { padding: '15px', borderBottom: '1px solid #222', display: 'flex', flexDirection: 'column', gap: '12px' },
-  infoBadge: { fontSize: '12px', padding: '10px', borderRadius: '6px', lineHeight: '1.5' },
+  infoBadge: { fontSize: '12px', padding: '10px', borderRadius: '6px', lineHeight: '1.5', whiteSpace: 'pre-line' },
   searchContainer: { display: 'flex', alignItems: 'center', background: '#1a1a1a', border: '1px solid #333', borderRadius: '6px', padding: '0 10px' },
   searchInput: { flex: 1, background: 'transparent', border: 'none', color: '#eee', padding: '10px 8px', fontSize: '13px', outline: 'none' },
   createBtn: { padding: '8px', background: '#222', border: '1px dashed #444', color: '#888', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', transition: 'all 0.2s ease' },

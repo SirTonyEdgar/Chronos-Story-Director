@@ -172,6 +172,12 @@ def init_db(profile_name: str):
     except sqlite3.OperationalError:
         pass
 
+    c.execute('''CREATE TABLE IF NOT EXISTS reserved_names (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        note TEXT DEFAULT ''
+    )''')
+
     c.execute('''CREATE TABLE IF NOT EXISTS story_settings (
         key TEXT PRIMARY KEY, value TEXT
     )''')
@@ -1030,6 +1036,45 @@ def delete_last_faction_reaction(profile_name, faction):
     conn = sqlite3.connect(paths['db'])
     c = conn.cursor()
     c.execute("DELETE FROM faction_memory WHERE id = (SELECT MAX(id) FROM faction_memory WHERE faction_name = ?)", (faction,))
+    conn.commit()
+    conn.close()
+
+def get_reserved_names(profile_name: str) -> List[dict]:
+    """Returns all reserved names for a profile."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("SELECT id, name, note FROM reserved_names ORDER BY id ASC")
+    rows = c.fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "note": r[2]} for r in rows]
+
+def add_reserved_name(profile_name: str, name: str, note: str = "") -> int:
+    """Adds a name to the reserved names list. Returns the new id."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("INSERT INTO reserved_names (name, note) VALUES (?, ?)", (name.strip(), note.strip()))
+    new_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+def delete_reserved_name(profile_name: str, name_id: int):
+    """Deletes a reserved name by id."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("DELETE FROM reserved_names WHERE id = ?", (name_id,))
+    conn.commit()
+    conn.close()
+
+def update_reserved_name_note(profile_name: str, name_id: int, note: str):
+    """Updates the note for a reserved name."""
+    paths = get_paths(profile_name)
+    conn = sqlite3.connect(paths['db'])
+    c = conn.cursor()
+    c.execute("UPDATE reserved_names SET note = ? WHERE id = ?", (note.strip(), name_id))
     conn.commit()
     conn.close()
 
