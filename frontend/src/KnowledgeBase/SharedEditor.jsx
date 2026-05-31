@@ -112,9 +112,12 @@ export default function SharedEditor({ profile, category, icon, color, descripti
   const [showMeta, setShowMeta] = useState(false);
 
   const [editKnownBy, setEditKnownBy] = useState("");
-  const [isSavingKnownBy, setIsSavingKnownBy] = useState(false);
   const [knownByInput, setKnownByInput] = useState("");
   const [knownVersions, setKnownVersions] = useState({});
+  const knownVersionsRef = useRef({});
+  useEffect(() => {
+    knownVersionsRef.current = knownVersions;
+  }, [knownVersions]);
   const [expandedVersions, setExpandedVersions] = useState({});
 
   const [autoSplit, setAutoSplit] = useState(false);
@@ -222,28 +225,36 @@ export default function SharedEditor({ profile, category, icon, color, descripti
     }
   };
 
-  const handleSaveKnownBy = async () => {
+  const handleSaveKnownBy = async (value) => {
     if (!selectedId) return;
-    setIsSavingKnownBy(true);
     try {
       await axios.post(`${API_URL}/knowledge/known_by/${profile}/${selectedId}`, {
-        known_by: editKnownBy
+        known_by: value
       });
-      toast("Access saved.", "success");
+      setItems(prev => prev.map(item =>
+        item.id === selectedId
+          ? { ...item, known_by: value }
+          : item
+      ));
     } catch (err) {
-      toast("Failed to save access: " + err.message, "error");
-    } finally {
-      setIsSavingKnownBy(false);
+      toast("Failed to save: " + err.message, "error");
     }
   };
 
   const handleSaveKnownVersions = async (entity, versionText) => {
-    const updated = { ...knownVersions, [entity]: versionText };
+    const updated = { ...knownVersionsRef.current, [entity]: versionText };
     setKnownVersions(updated);
+    knownVersionsRef.current = updated;
     try {
       await axios.post(`${API_URL}/knowledge/known_versions/${profile}/${selectedId}`, {
         known_versions: JSON.stringify(updated)
       });
+      // Update local items array so useEffect doesn't reset state on re-render
+      setItems(prev => prev.map(item =>
+        item.id === selectedId
+          ? { ...item, known_versions: JSON.stringify(updated) }
+          : item
+      ));
     } catch (err) {
       toast("Failed to save version: " + err.message, "error");
     }
@@ -601,6 +612,7 @@ export default function SharedEditor({ profile, category, icon, color, descripti
                         onClick={() => {
                           const updated = editKnownBy.split(',').filter((_, idx) => idx !== i).join(', ');
                           setEditKnownBy(updated);
+                          handleSaveKnownBy(updated);
                           const newVersions = { ...knownVersions };
                           delete newVersions[name];
                           setKnownVersions(newVersions);
@@ -637,7 +649,9 @@ export default function SharedEditor({ profile, category, icon, color, descripti
                   if (e.key === 'Enter' && knownByInput.trim()) {
                     const current = editKnownBy ? editKnownBy.split(',').map(x => x.trim()).filter(Boolean) : [];
                     if (!current.includes(knownByInput.trim())) {
-                      setEditKnownBy([...current, knownByInput.trim()].join(', '));
+                      const newValue = [...current, knownByInput.trim()].join(', ');
+                      setEditKnownBy(newValue);
+                      handleSaveKnownBy(newValue);
                     }
                     setKnownByInput('');
                   }
@@ -650,20 +664,15 @@ export default function SharedEditor({ profile, category, icon, color, descripti
                   if (knownByInput.trim()) {
                     const current = editKnownBy ? editKnownBy.split(',').map(x => x.trim()).filter(Boolean) : [];
                     if (!current.includes(knownByInput.trim())) {
-                      setEditKnownBy([...current, knownByInput.trim()].join(', '));
+                      const newValue = [...current, knownByInput.trim()].join(', ');
+                      setEditKnownBy(newValue);
+                      handleSaveKnownBy(newValue);
                     }
                     setKnownByInput('');
                   }
                 }}
                 style={{ padding: '8px 12px', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
               >Add</button>
-              <button
-                onClick={handleSaveKnownBy}
-                disabled={isSavingKnownBy}
-                style={{ padding: '8px 14px', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
-              >
-                {isSavingKnownBy ? "Saving..." : "Save"}
-              </button>
             </div>
           </div>
         )}
