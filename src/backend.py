@@ -1235,6 +1235,35 @@ def get_reference_context(profile_name: str) -> tuple[str, str]:
 
     return style_block, world_block
 
+def _get_faction_pov_block(profile_name: str, character_pov: str) -> str:
+    """
+    If no character POV is set, check for Main POV factions in the World State.
+    Returns a faction collective POV instruction block, or empty string.
+    """
+    if character_pov and character_pov.strip():
+        return ""
+    try:
+        world_state = db.get_world_state(profile_name)
+        main_pov_factions = [
+            f for f in world_state.get('Factions', [])
+            if f.get('Role') == 'Main POV' and f.get('Status') != 'Dissolved'
+        ]
+        if not main_pov_factions:
+            return ""
+        faction_names = ", ".join(f['Name'] for f in main_pov_factions)
+        goals = "\n".join(
+            f"- {f['Name']}: {f.get('KnownGoals', 'No goals specified')}"
+            for f in main_pov_factions
+        )
+        return f"""*** FACTION POV ***
+This scene is written from the collective perspective of: {faction_names}
+These are institutions, not individuals. Do not write from a single character's interior monologue.
+Write from a collective institutional voice — multiple members of this faction experience events simultaneously.
+Their current goals:
+{goals}"""
+    except Exception:
+        return ""
+
 def draft_scene(state: StoryState) -> dict:
     """
     Workflow Node 2: Narrative Drafting (The Writer).
@@ -1402,6 +1431,8 @@ def draft_scene(state: StoryState) -> dict:
     BRIEF: {state['scene_brief']}
     
     INSTRUCTION: Write the full prose for this scene by expanding the APPROVED SCENE OUTLINE. You are not summarizing events — you are inhabiting them. The lore and world state are not documents to reference. They are the physics of the world you already live in. Write from inside that world, not about it.
+
+    {_get_faction_pov_block(profile, state.get('pov_context', ''))}
 
     {get_reserved_names_block(profile)}
 
@@ -2791,11 +2822,23 @@ def run_war_room_simulation(profile, action_input, timeline=""):
 
     # 5. Construct the Dossier
     #    Note: Uses json.dumps for clean data formatting within the prompt
+    # Build faction roster block
+    faction_roster = state.get('Factions', [])
+    faction_block = ""
+    if faction_roster:
+        faction_lines = [
+            f"- {f['Name']} | Role: {f.get('Role','Neutral')} | Status: {f.get('Status','Unknown')} | Leadership: {f.get('Leadership','Unknown')} | Goals: {f.get('KnownGoals','')}"
+            for f in faction_roster
+        ]
+        faction_block = "*** FACTION ROSTER ***\n" + "\n".join(faction_lines)
+
     intel_packet = f"""
     *** CURRENT ASSETS & STATUS ***
     Protagonist Status: {json.dumps(state.get('Protagonist Status', {}))}
-    Known Cast & Factions: {json.dumps(state.get('Cast', []))} 
+    Known Cast: {json.dumps(state.get('Cast', []))} 
     
+    {faction_block}
+
     Available Assets: {json.dumps(state.get('Assets', []))}
     Current Skills: {json.dumps(state.get('Skills', []))}
     
@@ -2896,10 +2939,22 @@ def run_war_room_with_search(profile: str, action_input: str, timeline: str = ""
     if not smart_intel:
         smart_intel = "No specific intelligence dossiers found."
 
+    faction_roster = state.get('Factions', [])
+    faction_block = ""
+    if faction_roster:
+        faction_lines = [
+            f"- {f['Name']} | Role: {f.get('Role','Neutral')} | Status: {f.get('Status','Unknown')} | Leadership: {f.get('Leadership','Unknown')} | Goals: {f.get('KnownGoals','')}"
+            for f in faction_roster
+        ]
+        faction_block = "*** FACTION ROSTER ***\n" + "\n".join(faction_lines)
+
     intel_packet = f"""
     *** CURRENT ASSETS & STATUS ***
     Protagonist Status: {json.dumps(state.get('Protagonist Status', {}))}
-    Known Cast & Factions: {json.dumps(state.get('Cast', []))}
+    Known Cast: {json.dumps(state.get('Cast', []))}
+
+    {faction_block}
+
     Available Assets: {json.dumps(state.get('Assets', []))}
     Current Skills: {json.dumps(state.get('Skills', []))}
 

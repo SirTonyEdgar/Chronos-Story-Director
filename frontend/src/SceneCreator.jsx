@@ -276,6 +276,7 @@ export default function SceneCreator({ profile }) {
   const genPollRef = useRef(null);
   const [fogOfWar, setFogOfWar] = useState(false);
   const [povContext, setPovContext] = useState("");
+  const [castOptions, setCastOptions] = useState([]);
 
   // Editor State
   const [selectedFile, setSelectedFile] = useState("");
@@ -361,6 +362,13 @@ export default function SceneCreator({ profile }) {
       setShowDate(String(s.enable_date || 'true').toLowerCase() === 'true');
       setShowClock(String(s.enable_clock || 'true').toLowerCase() === 'true');
       setAvailableTimelines(stateRes.data.Timelines || []);
+      const protagonists = (stateRes.data.Cast || [])
+        .filter(c => c.Role === 'Protagonist')
+        .map(c => ({ label: c.Name, group: 'Characters' }));
+      const factionPovs = (stateRes.data.Factions || [])
+        .filter(f => f.Role === 'Main POV')
+        .map(f => ({ label: f.Name, group: 'Factions' }));
+      setCastOptions([...protagonists, ...factionPovs]);
 
     } catch (err) {
       console.error("Initialization Failed:", err);
@@ -814,14 +822,35 @@ export default function SceneCreator({ profile }) {
 
             {/* POV Context */}
             <div>
-              <label style={styles.label}>POV Context (Access Level)</label>
-              <input
-                type="text"
-                value={povContext}
-                onChange={e => setPovContext(e.target.value)}
-                placeholder="Who is the POV character/faction? e.g. Tony Edgar, Praetorian Guard (leave blank for protagonist)"
-                style={styles.input}
-              />
+              <label style={styles.label}>POV Context</label>
+              {castOptions.length > 0 ? (
+                <select
+                  value={povContext}
+                  onChange={e => setPovContext(e.target.value)}
+                  style={styles.input}
+                >
+                  <option value="">Default (no specific POV)</option>
+                  {['Characters', 'Factions'].map(group => {
+                    const opts = castOptions.filter(o => o.group === group);
+                    if (opts.length === 0) return null;
+                    return (
+                      <optgroup key={group} label={group}>
+                        {opts.map(o => (
+                          <option key={o.label} value={o.label}>{o.label}</option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={povContext}
+                  onChange={e => setPovContext(e.target.value)}
+                  placeholder="Who is the POV character or faction?"
+                  style={styles.input}
+                />
+              )}
               <div style={{ fontSize: '11px', color: '#52525b', marginTop: '4px' }}>
                 Controls which restricted documents the Librarian can access for this scene.
               </div>

@@ -12,7 +12,7 @@ import { confirm } from '../components/Notifications';
 // --- CONFIGURATION ---
 
 const ROLES = [
-  { id: "POV", label: "Main (POV)", color: "#3b82f6", icon: <Star size={14} /> },
+  { id: "Protagonist", label: "Protagonist", color: "#ffd700", icon: <Star size={14} /> },
   { id: "Support", label: "Support", color: "#22c55e", icon: <Shield size={14} /> },
   { id: "Antagonist", label: "Antagonist", color: "#ef4444", icon: <Swords size={14} /> },
   { id: "Minor", label: "Minor", color: "#71717a", icon: <Users size={14} /> }
@@ -57,7 +57,7 @@ export default function CharacterManagerTab({ state, setState, profile }) {
     if (state && !state.Cast) {
       normalizeDataStructure();
     } else if (state && state.Cast && state.Cast.length > 0 && !selectedId) {
-      const firstPov = state.Cast.find(c => c.Role === "POV");
+      const firstPov = state.Cast.find(c => c.Role === "Protagonist");
       setSelectedId(firstPov ? firstPov.id : state.Cast[0].id);
     }
     if (profile) fetchSettings();
@@ -71,7 +71,7 @@ export default function CharacterManagerTab({ state, setState, profile }) {
     newCast.push({
       ...oldProtagonist,
       id: `char_${Date.now()}`,
-      Role: "POV",
+      Role: "Protagonist",
       Tags: ["Protagonist"],
       Links: [] 
     });
@@ -116,7 +116,7 @@ export default function CharacterManagerTab({ state, setState, profile }) {
 
     // Legacy Sync
     const newActiveChar = updatedCast.find(c => c.id === selectedId);
-    if (newActiveChar && newActiveChar.Role === "POV") {
+    if (newActiveChar && newActiveChar.Role === "Protagonist") {
       newState["Protagonist Status"] = { 
         ...newState["Protagonist Status"], 
         ...newActiveChar
@@ -559,7 +559,7 @@ export default function CharacterManagerTab({ state, setState, profile }) {
                   </div>
 
                   {/* Context (POV Only) */}
-                  {activeChar.Role === 'POV' && (
+                  {activeChar.Role === 'Protagonist' && (
                     <div style={styles.contextBox}>
                       <label style={{...styles.label, color: '#fbbf24'}}>TRUE IDENTITY (AI CONTEXT)</label>
                       <input 

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
   Save, User, Briefcase, Users, Coins, Zap, Globe, FileJson, 
   Sparkles, ChevronDown, ChevronRight, FileText, Check,
-  RotateCcw, Clock, AlertTriangle, CheckCircle2, XCircle
+  RotateCcw, Clock, AlertTriangle, CheckCircle2, XCircle, Network
 } from 'lucide-react';
 import { API_URL } from '../config';
 import { TimelineDropdown } from '../components/SharedComponents';
@@ -11,6 +11,7 @@ import { toast, confirm } from '../components/Notifications';
 
 // Sub-Components
 import CharacterManagerTab from './CharacterManagerTab';
+import FactionRosterTab from './FactionRosterTab';
 import ProjectsTab from './ProjectsTab';
 import SkillsTab from './SkillsTab';
 import VariablesTab from './VariablesTab';
@@ -211,6 +212,7 @@ export default function WorldStateTracker({ profile }) {
 
   const tabs = [
     { id: "protagonist", label: "Cast Roster", icon: <User size={16} /> },
+    { id: "factions", label: "Faction Roster", icon: <Network size={16} /> },
     { id: "projects", label: "Projects", icon: <Briefcase size={16} /> },
     { id: "relations", label: "Relations", icon: <Users size={16} /> },
     { id: "assets", label: "Assets", icon: <Coins size={16} /> },
@@ -424,6 +426,9 @@ export default function WorldStateTracker({ profile }) {
               setState={setState} 
               profile={profile} 
             />
+          )}
+          {activeTab === 'factions' && (
+            <FactionRosterTab state={state} setState={setState} />
           )}
           {activeTab === "projects" && <ProjectsTab state={state} setState={setState} profile={profile} />}
           {activeTab === "relations" && <RelationsTab state={state} setState={setState} />}

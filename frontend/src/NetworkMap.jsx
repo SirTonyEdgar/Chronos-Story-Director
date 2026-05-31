@@ -99,7 +99,7 @@ const CustomNode = ({ data }) => {
   };
 
   const getBorderColor = (d) => {
-    if (d.role === "POV" || d.category === "Protagonist") return "#ffd700";
+    if (d.role === "Protagonist") return "#ffd700";
     if (d.role === "Antagonist" || d.category === "Enemy") return "#ef4444";
     const key = d.icon;
     if (key === "Enemy" || key === "Target" || key === "Villain") return "#ff4444"; 
@@ -146,8 +146,8 @@ const CustomNode = ({ data }) => {
         <div style={{
           marginTop: '8px', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase',
           padding: '2px 8px', borderRadius: '8px', 
-          background: data.role === 'POV' ? 'rgba(255, 215, 0, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-          color: data.role === 'POV' ? '#ffd700' : '#aaa'
+          background: data.role === 'Protagonist' ? 'rgba(255, 215, 0, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+          color: data.role === 'Protagonist' ? '#ffd700' : '#aaa'
         }}>
           {data.role}
         </div>
@@ -289,7 +289,7 @@ const SmartStraightEdge = ({ id, sourceX, sourceY, targetX, targetY, label, styl
 
 const getIsolatedRippleLayout = (nodes, edges) => {
   // 1. Identify Roles
-  const povNodes = nodes.filter(n => n.data.role === 'POV' || n.data.category === 'Protagonist');
+  const povNodes = nodes.filter(n => n.data.role === 'Protagonist');
   const otherNodes = nodes.filter(n => !povNodes.includes(n));
 
   // Initialize Systems
@@ -435,7 +435,7 @@ const getOrbitDepthLayout = (nodes, edges, direction = 'TB') => {
   nodes.forEach(n => { nodeMap[n.id] = n; });
 
   // Find POV node(s)
-  const povNodes = nodes.filter(n => n.data.role === 'POV' || n.data.category === 'Protagonist');
+  const povNodes = nodes.filter(n => n.data.role === 'Protagonist');
   if (povNodes.length === 0) {
     // No POV — fall back to simple grid
     nodes.forEach((n, i) => {
@@ -482,7 +482,7 @@ const getOrbitDepthLayout = (nodes, edges, direction = 'TB') => {
   // Override with explicit Ring field where set, fall back to BFS depth
   const maxBfsLevel = Math.max(0, ...Object.values(levels));
   nodes.forEach(n => {
-    if (n.data.role === 'POV' || n.data.category === 'Protagonist') {
+    if (n.data.role === 'Protagonist') {
       levels[n.id] = 0;
     } else if (n.data.ring) {
       levels[n.id] = ringToLevel[n.data.ring.toLowerCase()] ?? maxBfsLevel + 1;
