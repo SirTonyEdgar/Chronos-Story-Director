@@ -1,5 +1,10 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import TextAlign from '@tiptap/extension-text-align';
+import { TextStyle } from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
+import FontFamily from '@tiptap/extension-font-family';
+import Placeholder from '@tiptap/extension-placeholder';
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
@@ -287,13 +292,24 @@ export default function SceneCreator({ profile }) {
   const [manualDateStr, setManualDateStr] = useState("");
   const [isSavingManual, setIsSavingManual] = useState(false);
   const manualFileInputRef = useRef(null);
+  const [editorVersion, setEditorVersion] = useState(0);
 
   const manualEditor = useEditor({
-    extensions: [StarterKit],
-    content: '<p>Start writing your scene here...</p>',
+    extensions: [
+      StarterKit,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      TextStyle,
+      Color,
+      FontFamily,
+      Placeholder.configure({ placeholder: 'Start writing your scene here...' }),
+    ],
+    content: '',
+    onUpdate: () => setEditorVersion(v => v + 1),
+    onSelectionUpdate: () => setEditorVersion(v => v + 1),
     editorProps: {
       attributes: {
-        style: 'min-height: 500px; padding: 30px; outline: none; font-size: 15px; line-height: 1.8; color: #e4e4e7; font-family: Georgia, serif;'
+        style: 'min-height: 500px; padding: 30px; outline: none; font-size: 15px; line-height: 1.8; color: #e4e4e7; font-family: Georgia, serif;',
+        'data-placeholder': 'Start writing your scene here...'
       }
     }
   });
@@ -730,6 +746,17 @@ export default function SceneCreator({ profile }) {
     </div>
   );
 
+  // TipTap placeholder CSS
+  const placeholderStyle = `
+    .tiptap p.is-editor-empty:first-child::before {
+      content: attr(data-placeholder);
+      color: #52525b;
+      pointer-events: none;
+      float: left;
+      height: 0;
+    }
+  `;
+
   return (
     <div style={styles.scrollWrapper}>
 
@@ -1149,16 +1176,61 @@ export default function SceneCreator({ profile }) {
             </div>
 
             {/* Toolbar */}
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', background: '#111', border: '1px solid #27272a', borderRadius: '8px 8px 0 0', padding: '8px 12px', flexWrap: 'wrap' }}>
-              <button onClick={() => manualEditor?.chain().focus().toggleBold().run()} style={{ ...toolbarBtnStyle, fontWeight: '700', background: manualEditor?.isActive('bold') ? '#27272a' : 'transparent' }}>B</button>
-              <button onClick={() => manualEditor?.chain().focus().toggleItalic().run()} style={{ ...toolbarBtnStyle, fontStyle: 'italic', background: manualEditor?.isActive('italic') ? '#27272a' : 'transparent' }}>I</button>
-              <div style={{ width: '1px', background: '#333', height: '20px', margin: '0 4px' }} />
-              <button onClick={() => manualEditor?.chain().focus().toggleHeading({ level: 1 }).run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('heading', { level: 1 }) ? '#27272a' : 'transparent' }}>H1</button>
-              <button onClick={() => manualEditor?.chain().focus().toggleHeading({ level: 2 }).run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('heading', { level: 2 }) ? '#27272a' : 'transparent' }}>H2</button>
-              <div style={{ width: '1px', background: '#333', height: '20px', margin: '0 4px' }} />
-              <button onClick={() => manualEditor?.chain().focus().setParagraph().run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('paragraph') ? '#27272a' : 'transparent' }}>¶</button>
-              <button onClick={() => manualEditor?.chain().focus().setHardBreak().run()} style={toolbarBtnStyle}>↵</button>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', background: '#111', border: '1px solid #27272a', borderRadius: '8px 8px 0 0', padding: '8px 12px', flexWrap: 'wrap', rowGap: '8px' }}>
+              <span style={{ display: 'none' }}>{editorVersion}</span>
+
+              {/* Font Family */}
+              <select
+                onChange={e => manualEditor?.chain().focus().setFontFamily(e.target.value).run()}
+                style={{ background: '#18181b', border: '1px solid #27272a', color: '#a1a1aa', borderRadius: '4px', padding: '4px 8px', fontSize: '12px', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Times New Roman', serif">Times New Roman</option>
+                <option value="Arial, sans-serif">Arial</option>
+                <option value="'Courier New', monospace">Courier New</option>
+                <option value="Garamond, serif">Garamond</option>
+              </select>
+
+              <div style={tbDivider} />
+
+              {/* Text style */}
+              <button onClick={() => manualEditor?.chain().focus().toggleBold().run()} style={{ ...toolbarBtnStyle, fontWeight: '700', background: manualEditor?.isActive('bold') ? '#3f3f46' : 'transparent', color: manualEditor?.isActive('bold') ? '#fff' : '#a1a1aa' }}>B</button>
+              <button onClick={() => manualEditor?.chain().focus().toggleItalic().run()} style={{ ...toolbarBtnStyle, fontStyle: 'italic', background: manualEditor?.isActive('italic') ? '#3f3f46' : 'transparent', color: manualEditor?.isActive('italic') ? '#fff' : '#a1a1aa' }}>I</button>
+              <button onClick={() => manualEditor?.chain().focus().toggleStrike().run()} style={{ ...toolbarBtnStyle, textDecoration: 'line-through', background: manualEditor?.isActive('strike') ? '#3f3f46' : 'transparent', color: manualEditor?.isActive('strike') ? '#fff' : '#a1a1aa' }}>S</button>
+
+              <div style={tbDivider} />
+
+              {/* Headings */}
+              <button onClick={() => manualEditor?.chain().focus().toggleHeading({ level: 1 }).run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('heading', { level: 1 }) ? '#3f3f46' : 'transparent', color: manualEditor?.isActive('heading', { level: 1 }) ? '#fff' : '#a1a1aa' }}>H1</button>
+              <button onClick={() => manualEditor?.chain().focus().toggleHeading({ level: 2 }).run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('heading', { level: 2 }) ? '#3f3f46' : 'transparent', color: manualEditor?.isActive('heading', { level: 2 }) ? '#fff' : '#a1a1aa' }}>H2</button>
+              <button onClick={() => manualEditor?.chain().focus().toggleHeading({ level: 3 }).run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('heading', { level: 3 }) ? '#3f3f46' : 'transparent', color: manualEditor?.isActive('heading', { level: 3 }) ? '#fff' : '#a1a1aa' }}>H3</button>
+              <button onClick={() => manualEditor?.chain().focus().setParagraph().run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('paragraph') ? '#3f3f46' : 'transparent', color: manualEditor?.isActive('paragraph') ? '#fff' : '#a1a1aa' }}>¶</button>
+
+              <div style={tbDivider} />
+
+              {/* Alignment */}
+              <button onClick={() => manualEditor?.chain().focus().setTextAlign('left').run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive({ textAlign: 'left' }) ? '#3f3f46' : 'transparent', color: manualEditor?.isActive({ textAlign: 'left' }) ? '#fff' : '#a1a1aa' }}>≡</button>
+              <button onClick={() => manualEditor?.chain().focus().setTextAlign('center').run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive({ textAlign: 'center' }) ? '#3f3f46' : 'transparent', color: manualEditor?.isActive({ textAlign: 'center' }) ? '#fff' : '#a1a1aa' }}>☰</button>
+              <button onClick={() => manualEditor?.chain().focus().setTextAlign('right').run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive({ textAlign: 'right' }) ? '#3f3f46' : 'transparent', color: manualEditor?.isActive({ textAlign: 'right' }) ? '#fff' : '#a1a1aa' }}>≡</button>
+              <button onClick={() => manualEditor?.chain().focus().setTextAlign('justify').run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive({ textAlign: 'justify' }) ? '#3f3f46' : 'transparent', color: manualEditor?.isActive({ textAlign: 'justify' }) ? '#fff' : '#a1a1aa' }}>☷</button>
+
+              <div style={tbDivider} />
+
+              {/* Color */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '12px', color: '#a1a1aa' }}>A</span>
+                <input
+                  type="color"
+                  defaultValue="#e4e4e7"
+                  onChange={e => manualEditor?.chain().focus().setColor(e.target.value).run()}
+                  style={{ width: '24px', height: '24px', border: 'none', borderRadius: '3px', cursor: 'pointer', padding: '0', background: 'transparent' }}
+                  title="Text color"
+                />
+              </div>
+
               <div style={{ flex: 1 }} />
+
+              {/* Import DOCX */}
               <button
                 onClick={() => manualFileInputRef.current?.click()}
                 style={{ padding: '6px 12px', background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -1185,7 +1257,7 @@ export default function SceneCreator({ profile }) {
           </div>
         )}
         
-        {activeTab !== "write" && (
+        {activeTab !== "write" && activeTab !== "manual" && (
           <div style={styles.formContainer}>
 
             {/* File Selector */}
@@ -1692,4 +1764,9 @@ const toolbarBtnStyle = {
   border: '1px solid transparent', color: '#a1a1aa', 
   borderRadius: '4px', cursor: 'pointer', 
   fontSize: '13px', fontWeight: '600', minWidth: '28px' 
+};
+
+const tbDivider = { 
+  width: '1px', background: '#333', 
+  height: '20px', margin: '0 4px', flexShrink: 0 
 };
