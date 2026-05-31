@@ -1237,28 +1237,42 @@ def get_reference_context(profile_name: str) -> tuple[str, str]:
 
 def _get_faction_pov_block(profile_name: str, character_pov: str) -> str:
     """
-    If no character POV is set, check for Main POV factions in the World State.
-    Returns a faction collective POV instruction block, or empty string.
+    Checks for Main POV factions in the World State.
+    If faction POVs are selected, injects collective POV instruction block.
+    Works with comma-separated multi-POV context.
     """
-    if character_pov and character_pov.strip():
-        return ""
     try:
         world_state = db.get_world_state(profile_name)
-        main_pov_factions = [
-            f for f in world_state.get('Factions', [])
-            if f.get('Role') == 'Main POV' and f.get('Status') != 'Dissolved'
-        ]
+        all_factions = world_state.get('Factions', [])
+        
+        # Get faction names from selected POVs (if any)
+        selected_povs = [p.strip().lower() for p in character_pov.split(',') if p.strip()] if character_pov else []
+        
+        if selected_povs:
+            # User has selected specific POVs — only include factions that are explicitly selected
+            main_pov_factions = [
+                f for f in all_factions
+                if f.get('Name', '').lower() in selected_povs
+                and f.get('Status') != 'Dissolved'
+            ]
+        else:
+            # No POV selected — use Main POV factions automatically
+            main_pov_factions = [
+                f for f in all_factions
+                if f.get('Role') == 'Main POV' and f.get('Status') != 'Dissolved'
+            ]
+
         if not main_pov_factions:
             return ""
+
         faction_names = ", ".join(f['Name'] for f in main_pov_factions)
         goals = "\n".join(
             f"- {f['Name']}: {f.get('KnownGoals', 'No goals specified')}"
             for f in main_pov_factions
         )
         return f"""*** FACTION POV ***
-This scene is written from the collective perspective of: {faction_names}
-These are institutions, not individuals. Do not write from a single character's interior monologue.
-Write from a collective institutional voice — multiple members of this faction experience events simultaneously.
+This scene includes the collective perspective of: {faction_names}
+These are institutions, not individuals. Write from a collective institutional voice — multiple members of this faction experience events simultaneously.
 Their current goals:
 {goals}"""
     except Exception:

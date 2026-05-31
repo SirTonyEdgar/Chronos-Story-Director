@@ -346,18 +346,24 @@ def get_content_by_ids(profile_name: str, id_list: List[int], pov_context: str =
                 try:
                     versions = json.loads(known_versions_json)
                     # Check for a version matching the POV (case-insensitive)
-                    pov_version = None
+                    pov_entities = [e.strip() for e in pov_context.split(',') if e.strip()]
+                    matched_versions = []
                     for entity, version_text in versions.items():
-                        if entity.strip().lower() == pov_context.strip().lower() and version_text.strip():
-                            pov_version = version_text.strip()
-                            break
-                    if pov_version:
-                        # Filtered replace: inject perspective note + full document with constraint
+                        for pov in pov_entities:
+                            if entity.strip().lower() == pov.lower() and version_text.strip():
+                                matched_versions.append((entity.strip(), version_text.strip()))
+                                break
+
+                    if matched_versions:
+                        version_blocks = "\n\n".join(
+                            f"{name}'s understanding:\n{text}"
+                            for name, text in matched_versions
+                        )
                         results.append(
                             f"[Document: {filename}]\n"
-                            f"PERSPECTIVE FILTER — {pov_context}'s understanding only:\n"
-                            f"{pov_version}\n\n"
-                            f"FULL DOCUMENT (AI context — only use information consistent with the perspective filter above):\n"
+                            f"PERSPECTIVE FILTERS — each POV's understanding of this document:\n"
+                            f"{version_blocks}\n\n"
+                            f"FULL DOCUMENT (AI context — write each character's behavior consistent with their understanding above, not the full document):\n"
                             f"{content}"
                         )
                         continue

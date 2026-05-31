@@ -275,8 +275,10 @@ export default function SceneCreator({ profile }) {
   const [genStatus, setGenStatus] = useState(null);
   const genPollRef = useRef(null);
   const [fogOfWar, setFogOfWar] = useState(false);
-  const [povContext, setPovContext] = useState("");
+  const [povContext, setPovContext] = useState([]);
   const [castOptions, setCastOptions] = useState([]);
+  const [povDropdownOpen, setPovDropdownOpen] = useState(false);
+  const povDropdownRef = useRef(null);
 
   // Editor State
   const [selectedFile, setSelectedFile] = useState("");
@@ -315,6 +317,16 @@ export default function SceneCreator({ profile }) {
   useEffect(() => {
     if (profile) loadProfileData();
   }, [profile]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (povDropdownRef.current && !povDropdownRef.current.contains(e.target)) {
+        setPovDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const sortFiles = (fileList) => {
     const chapterRegex = /^(?:Ch|Chapter)[_ ]?(\d+)(?:_Part_(\d+))?/i;
@@ -394,7 +406,7 @@ export default function SceneCreator({ profile }) {
     fog_of_war: fogOfWar,
     timeline: timeline,
     override_outline: overrideOutline,
-    pov_context: povContext,
+    pov_context: povContext.join(', '),
   });
 
   // --- ACTIONS ---
@@ -824,35 +836,74 @@ export default function SceneCreator({ profile }) {
             <div>
               <label style={styles.label}>POV Context</label>
               {castOptions.length > 0 ? (
-                <select
-                  value={povContext}
-                  onChange={e => setPovContext(e.target.value)}
-                  style={styles.input}
-                >
-                  <option value="">Default (no specific POV)</option>
-                  {['Characters', 'Factions'].map(group => {
-                    const opts = castOptions.filter(o => o.group === group);
-                    if (opts.length === 0) return null;
-                    return (
-                      <optgroup key={group} label={group}>
-                        {opts.map(o => (
-                          <option key={o.label} value={o.label}>{o.label}</option>
-                        ))}
-                      </optgroup>
-                    );
-                  })}
-                </select>
+                <div style={{ position: 'relative' }} ref={povDropdownRef}>
+                  <div
+                    onClick={() => setPovDropdownOpen(!povDropdownOpen)}
+                    style={{
+                      ...styles.input,
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      cursor: 'pointer', minHeight: '42px', height: 'auto',
+                      flexWrap: 'wrap', gap: '6px', padding: '6px 12px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                      {povContext.length === 0 && <span style={{ color: '#52525b', fontSize: '13px' }}>Default (no specific POV)</span>}
+                      {povContext.map(item => (
+                        <span key={item} style={styles.tag}>
+                          {item}
+                          <X size={12} style={{ marginLeft: '6px', cursor: 'pointer', opacity: 0.7 }}
+                            onClick={e => { e.stopPropagation(); setPovContext(prev => prev.filter(p => p !== item)); }}
+                          />
+                        </span>
+                      ))}
+                    </div>
+                    <ChevronDown size={16} color="#71717a" />
+                  </div>
+                  {povDropdownOpen && (
+                    <div style={styles.dropdownMenu}>
+                      {['Characters', 'Factions'].map(group => {
+                        const opts = castOptions.filter(o => o.group === group);
+                        if (opts.length === 0) return null;
+                        return (
+                          <div key={group}>
+                            <div style={{ padding: '6px 12px', fontSize: '10px', color: '#52525b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{group}</div>
+                            {opts.map(o => (
+                              <div
+                                key={o.label}
+                                onClick={() => {
+                                  setPovContext(prev =>
+                                    prev.includes(o.label)
+                                      ? prev.filter(p => p !== o.label)
+                                      : [...prev, o.label]
+                                  );
+                                }}
+                                style={{
+                                  ...styles.dropdownItem,
+                                  background: povContext.includes(o.label) ? '#27272a' : 'transparent',
+                                  color: povContext.includes(o.label) ? '#fff' : '#a1a1aa'
+                                }}
+                              >
+                                <span>{o.label}</span>
+                                {povContext.includes(o.label) && <Check size={14} color="#ef4444" />}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <input
                   type="text"
-                  value={povContext}
-                  onChange={e => setPovContext(e.target.value)}
+                  value={povContext.join(', ')}
+                  onChange={e => setPovContext(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
                   placeholder="Who is the POV character or faction?"
                   style={styles.input}
                 />
               )}
               <div style={{ fontSize: '11px', color: '#52525b', marginTop: '4px' }}>
-                Controls which restricted documents the Librarian can access for this scene.
+                Sets the perspective for this scene. Controls document access, known versions, and faction voice. Select multiple for omniscient narration.
               </div>
             </div>
 
