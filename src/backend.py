@@ -2202,6 +2202,56 @@ def bulk_regenerate_metadata_stream(profile_name: str):
     yield {"type": "done", "total": total, "success": success,
            "skipped": skipped, "failed": failed}
 
+def create_manual_scene(profile: str, title: str, chapter: Optional[int], year: int, date_str: str, content: str) -> tuple[str, str]:
+    """
+    Creates a new scene file from manually written content.
+    Uses same filename convention as generated scenes.
+    """
+    paths = db.get_paths(profile)
+    
+    # Build filename same way as generate_scene
+    safe_title = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')[:50]
+    date_prefix = ""
+    if year:
+        date_prefix = f"{year}_"
+    if date_str:
+        safe_date = re.sub(r'[^\w-]', '_', date_str)[:20]
+        date_prefix = f"{safe_date}_"
+    
+    if chapter:
+        base_name = f"Ch_{chapter:02d}_{safe_title}" if safe_title else f"Ch_{chapter:02d}_Manual"
+    else:
+        base_name = safe_title if safe_title else "Manual_Scene"
+    
+    filename = f"{date_prefix}{base_name}.txt"
+    
+    # Avoid overwriting existing files
+    filepath = os.path.join(paths['output'], filename)
+    counter = 1
+    while os.path.exists(filepath):
+        filename = f"{date_prefix}{base_name}_{counter}.txt"
+        filepath = os.path.join(paths['output'], filename)
+        counter += 1
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(content)
+    
+    # Save to generation_logs with minimal entry so it shows up properly
+    db.save_generation_log(
+        profile_name=profile,
+        filename=filename,
+        brief="[Manually written scene]",
+        retrieved_ids=[],
+        retrieved_titles=[],
+        revision_count=0,
+        validator_result="N/A — manual",
+        active_spoilers=[],
+        timeline="",
+        token_usage={}
+    )
+    
+    return filename, content
+
 def save_edited_scene(profile: str, filename: str, content: str) -> tuple[bool, str]:
     """
     Overwrites a scene file with manual edits and updates the database with new metadata.

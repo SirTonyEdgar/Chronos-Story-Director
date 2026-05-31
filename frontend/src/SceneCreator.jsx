@@ -1,3 +1,5 @@
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
@@ -277,6 +279,25 @@ export default function SceneCreator({ profile }) {
   const [fogOfWar, setFogOfWar] = useState(false);
   const [povContext, setPovContext] = useState([]);
   const [castOptions, setCastOptions] = useState([]);
+  
+  // Manual writing state
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualChapter, setManualChapter] = useState("");
+  const [manualYear, setManualYear] = useState("");
+  const [manualDateStr, setManualDateStr] = useState("");
+  const [isSavingManual, setIsSavingManual] = useState(false);
+  const manualFileInputRef = useRef(null);
+
+  const manualEditor = useEditor({
+    extensions: [StarterKit],
+    content: '<p>Start writing your scene here...</p>',
+    editorProps: {
+      attributes: {
+        style: 'min-height: 500px; padding: 30px; outline: none; font-size: 15px; line-height: 1.8; color: #e4e4e7; font-family: Georgia, serif;'
+      }
+    }
+  });
+
   const [povDropdownOpen, setPovDropdownOpen] = useState(false);
   const povDropdownRef = useRef(null);
 
@@ -539,6 +560,81 @@ export default function SceneCreator({ profile }) {
     }
   };
 
+  const handleSaveManual = async () => {
+    if (!manualEditor) return;
+    if (!manualTitle.trim()) return toast("Please enter a title.", "warning");
+
+    const html = manualEditor.getHTML();
+    // Strip HTML tags to plain text for pipeline compatibility
+    const plainText = html
+      .replace(/<h[1-6][^>]*>/gi, '\n\n')
+      .replace(/<\/h[1-6]>/gi, '\n')
+      .replace(/<p[^>]*>/gi, '')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<strong[^>]*>/gi, '')
+      .replace(/<\/strong>/gi, '')
+      .replace(/<em[^>]*>/gi, '')
+      .replace(/<\/em>/gi, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    setIsSavingManual(true);
+    try {
+      const res = await axios.post(`${API_URL}/scene/create_manual/${profile}`, {
+        title: manualTitle.trim(),
+        chapter: parseInt(manualChapter) || null,
+        year: parseInt(manualYear) || 0,
+        date_str: manualDateStr,
+        content: plainText
+      });
+      await refreshFileList();
+      setSelectedFile(res.data.filename);
+      setFileContent(res.data.content);
+      setActiveTab("read");
+      toast("Scene saved.", "success");
+    } catch (err) {
+      toast("Save failed: " + (err.response?.data?.detail || err.message), "error");
+    } finally {
+      setIsSavingManual(false);
+    }
+  };
+
+  const handleManualDocxImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    toast(`Extracting text from ${file.name}...`, "info");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await axios.post(
+        `${API_URL}/knowledge/import_file/${profile}`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      if (manualEditor) {
+        const paragraphs = res.data.text
+          .split('\n\n')
+          .filter(p => p.trim())
+          .map(p => `<p>${p.trim()}</p>`)
+          .join('');
+        manualEditor.commands.setContent(paragraphs);
+      }
+      if (!manualTitle && file.name) {
+        setManualTitle(file.name.replace(/\.docx?$/i, '').replace(/_/g, ' '));
+      }
+      toast("Document imported. Review and save when ready.", "success");
+    } catch (err) {
+      toast("Import failed: " + (err.response?.data?.detail || err.message), "error");
+    }
+    e.target.value = null;
+  };
+
   const handleSaveEdit = async () => {
     try {
       await axios.post(`${API_URL}/scene/save/${profile}`, {
@@ -615,6 +711,7 @@ export default function SceneCreator({ profile }) {
     <div style={styles.tabContainer}>
       {[
         { id: "write", label: "Write", icon: <PenTool size={14} /> },
+        { id: "manual", label: "Manual", icon: <FileText size={14} /> },
         { id: "read", label: "Read", icon: <BookOpen size={14} /> },
         { id: "edit", label: "Edit", icon: <Edit size={14} /> },
         { id: "manage", label: "Manage", icon: <FileMinus size={14} /> },
@@ -989,6 +1086,105 @@ export default function SceneCreator({ profile }) {
         )}
 
         {/* --- READ / EDIT / MANAGE TABS --- */}
+        
+        {/* --- MANUAL TAB --- */}
+        {activeTab === "manual" && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Hidden file input for DOCX */}
+            <input
+              type="file"
+              ref={manualFileInputRef}
+              onChange={handleManualDocxImport}
+              accept=".docx"
+              style={{ display: 'none' }}
+            />
+
+            {/* Metadata row */}
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 2, minWidth: '200px' }}>
+                <label style={styles.label}>TITLE</label>
+                <input
+                  value={manualTitle}
+                  onChange={e => setManualTitle(e.target.value)}
+                  placeholder="Scene title..."
+                  style={styles.input}
+                />
+              </div>
+              {useChapters && (
+                <div style={{ flex: 1, minWidth: '80px' }}>
+                  <label style={styles.label}>CHAPTER</label>
+                  <input
+                    type="number"
+                    value={manualChapter}
+                    onChange={e => setManualChapter(e.target.value)}
+                    placeholder="1"
+                    style={styles.input}
+                  />
+                </div>
+              )}
+              {showDate && (
+                <div style={{ flex: 1, minWidth: '100px' }}>
+                  <label style={styles.label}>YEAR</label>
+                  <input
+                    type="number"
+                    value={manualYear}
+                    onChange={e => setManualYear(e.target.value)}
+                    placeholder="2003"
+                    style={styles.input}
+                  />
+                </div>
+              )}
+              {showDate && (
+                <div style={{ flex: 2, minWidth: '120px' }}>
+                  <label style={styles.label}>DATE</label>
+                  <input
+                    value={manualDateStr}
+                    onChange={e => setManualDateStr(e.target.value)}
+                    placeholder="March 14, 2003"
+                    style={styles.input}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Toolbar */}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', background: '#111', border: '1px solid #27272a', borderRadius: '8px 8px 0 0', padding: '8px 12px', flexWrap: 'wrap' }}>
+              <button onClick={() => manualEditor?.chain().focus().toggleBold().run()} style={{ ...toolbarBtnStyle, fontWeight: '700', background: manualEditor?.isActive('bold') ? '#27272a' : 'transparent' }}>B</button>
+              <button onClick={() => manualEditor?.chain().focus().toggleItalic().run()} style={{ ...toolbarBtnStyle, fontStyle: 'italic', background: manualEditor?.isActive('italic') ? '#27272a' : 'transparent' }}>I</button>
+              <div style={{ width: '1px', background: '#333', height: '20px', margin: '0 4px' }} />
+              <button onClick={() => manualEditor?.chain().focus().toggleHeading({ level: 1 }).run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('heading', { level: 1 }) ? '#27272a' : 'transparent' }}>H1</button>
+              <button onClick={() => manualEditor?.chain().focus().toggleHeading({ level: 2 }).run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('heading', { level: 2 }) ? '#27272a' : 'transparent' }}>H2</button>
+              <div style={{ width: '1px', background: '#333', height: '20px', margin: '0 4px' }} />
+              <button onClick={() => manualEditor?.chain().focus().setParagraph().run()} style={{ ...toolbarBtnStyle, background: manualEditor?.isActive('paragraph') ? '#27272a' : 'transparent' }}>¶</button>
+              <button onClick={() => manualEditor?.chain().focus().setHardBreak().run()} style={toolbarBtnStyle}>↵</button>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={() => manualFileInputRef.current?.click()}
+                style={{ padding: '6px 12px', background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FileText size={13} /> Import DOCX
+              </button>
+            </div>
+
+            {/* Editor */}
+            <div style={{ background: '#0e0e0e', border: '1px solid #27272a', borderTop: 'none', borderRadius: '0 0 8px 8px', minHeight: '500px' }}>
+              <EditorContent editor={manualEditor} />
+            </div>
+
+            {/* Save button */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={handleSaveManual}
+                disabled={isSavingManual}
+                style={{ ...styles.primaryButton, opacity: isSavingManual ? 0.6 : 1 }}
+              >
+                <Save size={16} /> {isSavingManual ? "Saving..." : "Save as Scene"}
+              </button>
+            </div>
+          </div>
+        )}
+        
         {activeTab !== "write" && (
           <div style={styles.formContainer}>
 
@@ -1489,4 +1685,11 @@ const styles = {
     border: '1px solid rgba(245,158,11,0.2)', borderRadius: '6px',
     fontSize: '12px', color: '#a1a1aa', lineHeight: '1.5'
   }
+};
+
+const toolbarBtnStyle = { 
+  padding: '4px 8px', background: 'transparent', 
+  border: '1px solid transparent', color: '#a1a1aa', 
+  borderRadius: '4px', cursor: 'pointer', 
+  fontSize: '13px', fontWeight: '600', minWidth: '28px' 
 };

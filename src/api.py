@@ -312,6 +312,22 @@ def save_scene_edits(profile: str, payload: SceneEditRequest):
         raise HTTPException(status_code=500, detail=msg)
     return {"status": "Saved"}
 
+@app.post("/scene/create_manual/{profile}")
+def create_manual_scene(profile: str, payload: dict):
+    """Creates a new scene file from manually written content."""
+    try:
+        filename, content = engine.create_manual_scene(
+            profile=profile,
+            title=payload.get("title", "Untitled"),
+            chapter=payload.get("chapter"),
+            year=payload.get("year", 0),
+            date_str=payload.get("date_str", ""),
+            content=payload.get("content", "")
+        )
+        return {"status": "Success", "filename": filename, "content": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/scene/{profile}/{filename}")
 def delete_scene_file(profile: str, filename: str):
     """Permanently deletes a scene file."""
