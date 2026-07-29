@@ -9,7 +9,7 @@
 
 - **🎬 Context-Aware Scene Creator:** Auto-generate prose that respects your lore, rules, and previous chapters.
 - **🌌 World Simulation Engine:** Track abstract forces (e.g., "Federal Heat," "Timeline Drift") with rule-based consequences.
-- **⚔️ War Room:** Run AI-driven strategic simulations to predict the risks of your plot decisions.
+- **⚔️ War Room:** Run LLM-driven causality simulations — grounded in world rules, faction motives, and information asymmetry — to predict second-order consequences and risks of your plot decisions.
 - **📚 Manuscript Publisher:** Compile your scenes into print-ready PDF or EPUB books with one click.
 - **🕸️ Interactive Network Map:** A live, physics-based graph visualization of character relationships.
 - **📊 Dynamic State Tracker:** JSON-based persistence for Assets, Allies, Skills, and Projects.
